@@ -1,0 +1,12 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: discord
+
+receivers:
+  - name: discord
+    discord_configs:
+      - webhook_url: "https://discord.com/api/webhooks/1500522945775407184/5UY6RvTpwOA471GS4FSEYaA5CWPoVwpL2PpKXKe-iWCtthSJHmMDEJ6rYHrKoLS4BVI9"
+        title: "{{ .CommonAnnotations.summary }}"
+        message: "{{ .CommonAnnotations.description }}"
