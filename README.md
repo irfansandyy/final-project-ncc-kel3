@@ -34,8 +34,8 @@ The application supports JWT authentication, per-user persistent chat history, c
 │   └── init/
 │       └── 001_init.sql
 ├── nginx/
-│   └── templates/
-│       └── app.conf.template
+│   ├── nginx.conf
+│   └── certs/
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -110,7 +110,7 @@ Or run the default one-command bootstrap:
 ./scripts/up-with-dmr.sh
 ```
 
-Nginx config for the Docker reverse proxy lives in `nginx/templates/app.conf.template`.
+Nginx config for the Docker reverse proxy lives in `nginx/nginx.conf`.
 
 Default `.env` values are already configured for this flow:
 

@@ -14,9 +14,6 @@ backend/server
 backend/*.test
 coverage.out
 
-# AI model artifacts
-models/
-
 # Logs and temporary files
 *.log
 tmp/
