@@ -42,6 +42,8 @@ services:
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS}
     extra_hosts:
       - "model-runner.docker.internal:host-gateway"
+    volumes:
+      - app-logs:/app/logs
     ports:
       - "${BACKEND_HOST_BIND:-127.0.0.1}:${BACKEND_HOST_PORT:-8000}:80"
     depends_on:
@@ -101,5 +103,82 @@ services:
       retries: 3
       start_period: 10s
 
+  log-collector:
+    build:
+      context: ./services/log-collector
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/siem-log-collector:${TAG:-latest}
+    container_name: siem_log_collector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: log-collector
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RELOAD_INTERVAL_SECONDS: ${COLLECTOR_RELOAD_INTERVAL:-30}
+    volumes:
+      - ${WATCHED_LOG_DIR:-/var/log}:/watched-logs:ro
+      - app-logs:/app-logs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  log-parser:
+    build:
+      context: ./services/log-parser
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/siem-log-parser:${TAG:-latest}
+    container_name: siem_log_parser
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: log-parser
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      POLL_INTERVAL_MS: ${PARSER_POLL_INTERVAL_MS:-500}
+    depends_on:
+      log-collector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  siem-api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/siem-api:${TAG:-latest}
+    container_name: siem_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: siem-api
+      PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      WS_POLL_INTERVAL_MS: ${WS_POLL_INTERVAL_MS:-500}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    ports:
+      - "${SIEM_API_HOST_BIND:-127.0.0.1}:${SIEM_API_HOST_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
 volumes:
   pgdata:
+  app-logs:

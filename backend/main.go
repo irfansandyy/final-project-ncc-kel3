@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,7 +26,19 @@ import (
 
 func main() {
 	cfg := config.Load()
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// SIEM log extraction
+	logWriter := io.Writer(os.Stdout)
+	if err := os.MkdirAll("/app/logs", 0755); err == nil {
+		if file, err := os.OpenFile("/app/logs/backend.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
+			logWriter = io.MultiWriter(os.Stdout, file)
+		} else {
+			fmt.Printf("failed to open log file: %v\n", err)
+		}
+	} else {
+		fmt.Printf("failed to mkdir: %v\n", err)
+	}
+	logger := slog.New(slog.NewJSONHandler(logWriter, nil))
 
 	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
