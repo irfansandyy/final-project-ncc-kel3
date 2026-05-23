@@ -12,27 +12,20 @@ pipeline {
     }
 
     tools {
-        // Must match the name set in Manage Jenkins → Tools → SonarQube Scanner
         'hudson.plugins.sonar.SonarRunnerInstallation' 'Sonarqube Scanner'
     }
 
     environment {
-        IMAGE_TAG        = 'unknown'
-        REGISTRY_URL     = "${env.REGISTRY_URL ?: 'docker.io'}"
-        DOCKER_NAMESPACE = "${env.DOCKER_NAMESPACE ?: 'ncclaboratory18'}"
-
+        IMAGE_TAG         = 'unknown'
+        REGISTRY_URL      = "${env.REGISTRY_URL ?: 'docker.io'}"
+        DOCKER_NAMESPACE  = "${env.DOCKER_NAMESPACE ?: 'ckyyy'}"
         DOCKERHUB_CRED_ID = 'dockerhub-credentials'
         GITHUB_CRED_ID    = 'github-credentials'
-
-        // Discord webhook URL — store in Jenkins credentials as Secret Text
-        // ID: discord-webhook
-        DISCORD_WEBHOOK = credentials('discord-webhook')
-
-        // ── Update these to match your actual directory layout ──
-        GO_SERVICES     = 'services/api'
-	GOTOOLCHAIN     = 'local'
-        NEXTJS_SERVICES = 'services/frontend'
-        PYTHON_SERVICES = 'services/rule-engine'
+        DISCORD_WEBHOOK   = credentials('discord-webhook')
+        GO_SERVICES       = 'services/api'
+        GOTOOLCHAIN       = 'local'
+        NEXTJS_SERVICES   = 'services/frontend'
+        PYTHON_SERVICES   = 'services/rule-engine'
     }
 
     options {
@@ -43,7 +36,8 @@ pipeline {
     }
 
     stages {
-	stage('Checkout') {
+
+        stage('Checkout') {
             steps {
                 script {
                     checkout scm
@@ -52,7 +46,7 @@ pipeline {
                     echo "Commit: ${env.IMAGE_TAG} | Branch: ${env.GIT_BRANCH_NAME}"
                 }
             }
-	}
+        }
 
         stage('Lint') {
             parallel {
@@ -133,8 +127,7 @@ pipeline {
             }
         }
 
-        // ── SonarQube Analysis ───────────────────────────────────────────────
-	stage('SonarQube Analysis') {
+        stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
                     sh """
@@ -153,7 +146,6 @@ pipeline {
             }
         }
 
-        // ── Quality Gate ──────────────────────────────────────────────────────
         stage('Quality Gate') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -162,8 +154,7 @@ pipeline {
             }
         }
 
-        // ── Build & Push ──────────────────────────────────────────────────────
-	stage('Build & Push Images') {
+        stage('Build & Push Images') {
             when {
                 anyOf {
                     branch 'main'
@@ -177,14 +168,12 @@ pipeline {
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin https://docker.io
-                        '''
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin https://docker.io'
 
                         def services = [
-                            [dir: env.GO_SERVICES,      name: 'siem-api'],
-                            [dir: env.NEXTJS_SERVICES,  name: 'siem-frontend'],
-                            [dir: env.PYTHON_SERVICES,  name: 'siem-rule-engine'],
+                            [dir: env.GO_SERVICES,     name: 'siem-api'],
+                            [dir: env.NEXTJS_SERVICES, name: 'siem-frontend'],
+                            [dir: env.PYTHON_SERVICES, name: 'siem-rule-engine'],
                         ]
 
                         services.each { svc ->
@@ -206,30 +195,27 @@ pipeline {
             }
         }
 
-    // ── Post ──────────────────────────────────────────────────────────────────
+    } // end stages
+
     post {
         always {
             script {
-                // Clean up dangling images and workspace
                 sh 'docker image prune -f || true'
                 cleanWs()
             }
         }
-
         success {
             script {
                 def msg = """{"embeds":[{"title":"✅ Build Passed","color":3066993,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Commit","value":"${env.IMAGE_TAG}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true},{"name":"Console","value":"[View Output](${env.BUILD_URL}console)","inline":false}]}]}"""
                 sh """curl -s -X POST -H 'Content-Type: application/json' -d '${msg}' ${DISCORD_WEBHOOK}"""
             }
         }
-
         failure {
             script {
                 def msg = """{"embeds":[{"title":"❌ Build Failed","color":15158332,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Commit","value":"${env.IMAGE_TAG}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true},{"name":"Console","value":"[View Output](${env.BUILD_URL}console)","inline":false}]}]}"""
                 sh """curl -s -X POST -H 'Content-Type: application/json' -d '${msg}' ${DISCORD_WEBHOOK}"""
             }
         }
-
         unstable {
             script {
                 def msg = """{"embeds":[{"title":"⚠️ Build Unstable","color":16776960,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true}]}]}"""
@@ -237,4 +223,5 @@ pipeline {
             }
         }
     }
-}
+
+} // end pipeline
