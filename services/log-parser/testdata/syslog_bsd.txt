@@ -1,0 +1,5 @@
+<13>May 15 10:30:00 server1 sshd[1234]: Failed password for root from 192.168.1.100
+<11>May 15 10:31:00 firewall kernel: iptables DROP: SRC=192.168.1.50
+May 15 10:32:00 webhost nginx[5678]: 200 GET /api/health
+<14>May 15 10:33:00 dbserver postgres[9999]: LOG: autovacuum launcher started
+<12>May 15 10:34:00 appserver myapp[100]: CRITICAL: out of memory

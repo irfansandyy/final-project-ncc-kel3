@@ -36,7 +36,7 @@ services:
       DOCKER_TLS_VERIFY: "1"
       JENKINS_OPTS: --prefix=/jenkins
     ports:
-      - "127.0.0.1:8080:8080"
+      - "0.0.0.0:8080:8080"
       - "50000:50000"
     volumes:
       - jenkins-data:/var/jenkins_home
@@ -52,7 +52,7 @@ services:
       SONAR_WEB_CONTEXT: /sonarqube
       SONAR_CORE_SERVERBASEURL: https://${DOMAIN:-152.42.223.24}/sonarqube
     ports:
-      - "127.0.0.1:9000:9000"
+      - "0.0.0.0:9000:9000"
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions

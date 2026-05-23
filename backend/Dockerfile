@@ -17,6 +17,7 @@ RUN apk add --no-cache ca-certificates curl \
 
 WORKDIR /app
 COPY --from=builder /out/server /app/server
+RUN mkdir -p /app/logs && chown app:app /app/logs
 
 ENV APP_PORT=80
 EXPOSE 80

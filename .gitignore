@@ -22,6 +22,10 @@ dist/
 # Local TLS certs
 nginx/certs/
 
+# Useless items for repo
+repo/
+siem_wbs.pdf
+
 # OS/editor
 .DS_Store
 .vscode/
