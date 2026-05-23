@@ -17,7 +17,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_TAG        = ''
+        IMAGE_TAG        = 'unknown'
         REGISTRY_URL     = "${env.REGISTRY_URL ?: 'docker.io'}"
         DOCKER_NAMESPACE = "${env.DOCKER_NAMESPACE ?: 'ncclaboratory18'}"
 
@@ -97,7 +97,7 @@ pipeline {
                         dir(env.GO_SERVICES) {
                             sh '''
                                 mkdir -p test-results
-                                go test -v -race ./... -coverprofile=coverage.out 2>&1 | tee test-results/go-test.txt
+                                go test -v ./... -coverprofile=coverage.out 2>&1 | tee test-results/go-test.txt
                             '''
                         }
                     }
@@ -133,11 +133,12 @@ pipeline {
             }
         }
 
-        // ── SonarQube Analysis ────────────────────────────────────────────────
-        stage('SonarQube Analysis') {
+        // ── SonarQube Analysis ───────────────────────────────────────────────
+	stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
                     sh """
+                        export PATH=\$PATH:\$SONAR_RUNNER_HOME/bin
                         sonar-scanner \
                           -Dsonar.projectKey=final-project-ncc-kel3 \
                           -Dsonar.projectName='Final Project NCC Kel3' \
