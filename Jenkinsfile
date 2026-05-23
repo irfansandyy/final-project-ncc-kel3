@@ -163,7 +163,7 @@ pipeline {
         }
 
         // ── Build & Push ──────────────────────────────────────────────────────
-        stage('Build & Push Images') {
+	stage('Build & Push Images') {
             when {
                 anyOf {
                     branch 'main'
@@ -172,27 +172,39 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry("https://${env.REGISTRY_URL}", env.DOCKERHUB_CRED_ID) {
+                    withCredentials([usernamePassword(
+                        credentialsId: env.DOCKERHUB_CRED_ID,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin https://docker.io
+                        '''
+
                         def services = [
                             [dir: env.GO_SERVICES,      name: 'siem-api'],
                             [dir: env.NEXTJS_SERVICES,  name: 'siem-frontend'],
                             [dir: env.PYTHON_SERVICES,  name: 'siem-rule-engine'],
                         ]
+
                         services.each { svc ->
                             if (fileExists("${svc.dir}/Dockerfile")) {
                                 def tag = "${env.DOCKER_NAMESPACE}/${svc.name}:${env.IMAGE_TAG}"
-                                def img = docker.build(tag, "--pull ${svc.dir}")
-                                img.push()
+                                sh "docker build -t ${tag} --pull ${svc.dir}"
+                                sh "docker push ${tag}"
                                 if (env.BRANCH_NAME == 'main') {
-                                    img.push('latest')
+                                    def latestTag = "${env.DOCKER_NAMESPACE}/${svc.name}:latest"
+                                    sh "docker tag ${tag} ${latestTag}"
+                                    sh "docker push ${latestTag}"
                                 }
                             }
                         }
+
+                        sh 'docker logout https://docker.io || true'
                     }
                 }
             }
         }
-    }
 
     // ── Post ──────────────────────────────────────────────────────────────────
     post {
