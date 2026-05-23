@@ -46,13 +46,13 @@ pipeline {
 	stage('Checkout') {
             steps {
                 script {
-                    def scmVars = checkout scm
-                    env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    echo "Commit: ${env.IMAGE_TAG} | Branch: ${env.BRANCH_NAME}"
+                    checkout scm
+                    env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    env.GIT_BRANCH_NAME = sh(returnStdout: true, script: 'git symbolic-ref --short HEAD || git rev-parse --short HEAD').trim()
+                    echo "Commit: ${env.IMAGE_TAG} | Branch: ${env.GIT_BRANCH_NAME}"
                 }
             }
-        }
+	}
 
         stage('Lint') {
             parallel {
