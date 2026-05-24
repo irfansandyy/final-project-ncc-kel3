@@ -88,9 +88,9 @@ function StackedBarChart({
   keys,
   colors,
 }: {
-  series: TimeSeriesPoint[];
-  keys: string[];
-  colors: string[];
+  readonly series: TimeSeriesPoint[];
+  readonly keys: string[];
+  readonly colors: string[];
 }) {
   const maxTotal = useMemo(() => {
     return Math.max(
@@ -134,9 +134,9 @@ function AreaChart({
   keys,
   colors,
 }: {
-  series: TimeSeriesPoint[];
-  keys: string[];
-  colors: string[];
+  readonly series: TimeSeriesPoint[];
+  readonly keys: string[];
+  readonly colors: string[];
 }) {
   const W = 540;
   const H = 160;
@@ -185,7 +185,7 @@ function AreaChart({
 }
 
 // ── Donut chart ───────────────────────────────────────────────────────────────
-function DonutChart({ data }: { data: MitreTechnique[] }) {
+function DonutChart({ data }: { readonly data: MitreTechnique[] }) {
   const R = 54;
   const CX = 70;
   const CY = 70;
@@ -220,7 +220,7 @@ function DonutChart({ data }: { data: MitreTechnique[] }) {
 }
 
 // ── Horizontal bar ────────────────────────────────────────────────────────────
-function AgentBar({ agent, color }: { agent: AgentStat; color: string }) {
+function AgentBar({ agent, color }: { readonly agent: AgentStat; readonly color: string }) {
   return (
     <div className="siem-agent-row">
       <span className="siem-agent-name">{agent.agent_name}</span>
@@ -236,12 +236,12 @@ function AgentBar({ agent, color }: { agent: AgentStat; color: string }) {
 }
 
 // ── Alert level pill ──────────────────────────────────────────────────────────
-function LevelPill({ level }: { level: number }) {
+function LevelPill({ level }: { readonly level: number }) {
   return <span className={levelClass(level)}>{level}</span>;
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
-function Badge({ label, variant }: { label: string; variant: "blue" | "orange" | "gray" }) {
+function Badge({ label, variant }: { readonly label: string; readonly variant: "blue" | "orange" | "gray" }) {
   return <span className={`siem-badge siem-badge-${variant}`}>{label}</span>;
 }
 
@@ -298,8 +298,8 @@ export default function SiemDashboard() {
   );
 
   useEffect(() => {
-    void load(true);
-    intervalRef.current = setInterval(() => void load(false), 30_000);
+    load(true).catch(() => undefined);
+    intervalRef.current = setInterval(() => { load(false).catch(() => undefined); }, 30_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
@@ -339,9 +339,9 @@ export default function SiemDashboard() {
         <div className="siem-topbar-left">
           <div className="siem-logo">
             <span className="siem-logo-dot" />
-            SENTINEL
-            <span className="siem-logo-sep">//</span>
-            chatbot-siem
+            {" SENTINEL "}
+            <span className="siem-logo-sep">{"//"}</span>
+            {" chatbot-siem"}
           </div>
           <nav className="siem-nav">
             <span className="siem-nav-tab siem-nav-active">Dashboard</span>
@@ -359,7 +359,7 @@ export default function SiemDashboard() {
           <button
             className="siem-refresh-btn"
             type="button"
-            onClick={() => void load(false)}
+            onClick={() => { load(false).catch(() => undefined); }}
             disabled={loading}
           >
             ↺ Refresh
@@ -370,10 +370,10 @@ export default function SiemDashboard() {
       {/* ── Filter bar ── */}
       <div className="siem-filterbar">
         <span className="siem-filter-chip">
-          <span className="siem-chip-key">cluster:</span> chatbot-ncc-kel3
+          <span className="siem-chip-key">cluster:</span>{" chatbot-ncc-kel3"}
         </span>
         <span className="siem-filter-chip">
-          <span className="siem-chip-key">env:</span> production
+          <span className="siem-chip-key">env:</span>{" production"}
         </span>
         <span className="siem-add-filter">+ Add filter</span>
         <span className="siem-time-badge">⏱ Last 7 days</span>

@@ -521,7 +521,7 @@ a {
 }
 
 .siem-logo-sep {
-  color: #6e7681;
+  color: #9ca3af;
   font-weight: 400;
 }
 
@@ -692,7 +692,7 @@ a {
 .siem-metric-sub {
   margin: 4px 0 0;
   font-size: 10px;
-  color: #6e7681;
+  color: #9ca3af;
 }
 
 .siem-blue  { color: #58a6ff; }
@@ -871,7 +871,7 @@ a {
   background: #1c2333;
   padding: 8px 14px;
   font-size: 10px;
-  color: #6e7681;
+  color: #9ca3af;
   text-transform: uppercase;
   letter-spacing: 0.6px;
   text-align: left;
@@ -891,13 +891,13 @@ a {
 }
 
 .siem-td-chevron {
-  color: #6e7681;
+  color: #9ca3af;
   font-size: 14px;
   padding-right: 4px !important;
 }
 
 .siem-td-time {
-  color: #6e7681 !important;
+  color: #9ca3af !important;
   font-size: 10px !important;
 }
 
@@ -974,7 +974,7 @@ a {
 
 .siem-page-info {
   font-size: 10px;
-  color: #6e7681;
+  color: #9ca3af;
 }
 
 .siem-page-btns {

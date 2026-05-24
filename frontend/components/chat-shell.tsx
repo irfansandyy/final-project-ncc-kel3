@@ -331,11 +331,11 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
   }, [handleUnauthorized, loadChats, loadProfile, token]);
 
   useEffect(() => {
-    if (!activeChatSlug) {
+    if (activeChatSlug) {
+      void loadMessages(activeChatSlug);
+    } else {
       setMessages([]);
-      return;
     }
-    void loadMessages(activeChatSlug);
   }, [activeChatSlug, loadMessages]);
 
   useEffect(() => {
@@ -431,6 +431,45 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
     }
   }
 
+  async function handleSendError(
+    err: unknown,
+    chatSlug: string | undefined,
+    streamedText: string,
+    optimisticUserId: number,
+    optimisticAssistantId: number
+  ): Promise<boolean> {
+    const possibleAbort = err as { name?: string };
+    const isAbort = possibleAbort.name === "AbortError" || stopRequestedRef.current;
+
+    if (isAbort) {
+      setError(null);
+      setMessages((prev) => {
+        const stopped = prev.map((msg) =>
+          msg.id === optimisticAssistantId
+            ? { ...msg, content: streamedText.trim() ? streamedText : "Stopped." }
+            : msg
+        );
+        if (chatSlug) {
+          messagesCache[chatSlug] = stopped;
+        }
+        return stopped;
+      });
+      await loadChats(false);
+      return true;
+    }
+
+    const apiError = err as APIError;
+    if (apiError.status === 401) {
+      handleUnauthorized();
+      return true;
+    }
+    setMessages((prev) =>
+      prev.filter((msg) => msg.id !== optimisticUserId && msg.id !== optimisticAssistantId)
+    );
+    setError(apiError.message);
+    return false;
+  }
+
   async function handleSendMessage(event: FormEvent) {
     event.preventDefault();
     if (!draft.trim() || !token || sending) {
@@ -490,35 +529,7 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
       });
       await loadChats(false);
     } catch (err) {
-      const possibleAbort = err as { name?: string };
-      const isAbort = possibleAbort.name === "AbortError" || stopRequestedRef.current;
-
-      if (isAbort) {
-        setError(null);
-        setMessages((prev) => {
-          const stopped = prev.map((msg) =>
-            msg.id === optimisticAssistantId
-              ? { ...msg, content: streamedText.trim() ? streamedText : "Stopped." }
-              : msg
-          );
-          if (chatSlug) {
-            messagesCache[chatSlug] = stopped;
-          }
-          return stopped;
-        });
-        await loadChats(false);
-        return;
-      }
-
-      const apiError = err as APIError;
-      if (apiError.status === 401) {
-        handleUnauthorized();
-        return;
-      }
-      setMessages((prev) =>
-        prev.filter((msg) => msg.id !== optimisticUserId && msg.id !== optimisticAssistantId)
-      );
-      setError(apiError.message);
+      await handleSendError(err, chatSlug, streamedText, optimisticUserId, optimisticAssistantId);
     } finally {
       setSending(false);
       streamAbortRef.current = null;
