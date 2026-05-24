@@ -1,0 +1,8 @@
+	github.com/fpncc/api		coverage: 0.0% of statements
+ok  	github.com/fpncc/api/config	0.003s	coverage: 100.0% of statements
+ok  	github.com/fpncc/api/db	0.004s	coverage: 75.0% of statements
+ok  	github.com/fpncc/api/handlers	0.063s	coverage: 94.1% of statements
+ok  	github.com/fpncc/log-parser	0.005s	coverage: 55.1% of statements
+ok  	github.com/fpncc/log-parser/parser	0.004s	coverage: 92.9% of statements
+ok  	github.com/fpncc/log-collector	(cached)	coverage: 42.6% of statements
+ok  	github.com/fpncc/log-collector/collector	(cached)	coverage: 72.0% of statements

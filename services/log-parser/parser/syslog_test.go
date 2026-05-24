@@ -128,3 +128,26 @@ func TestMapSeverityToLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestSyslogParser_CanParse(t *testing.T) {
+	p := &SyslogParser{}
+
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{"<34>1 2024-03-15T10:30:00.000Z server1 sshd 1234 - - msg", true},
+		{"<13>May 15 10:30:00 server1 sshd[1234]: msg", true},
+		{"May 15 10:30:00 server1 sshd[1234]: msg", true},
+		{"192.168.1.1 - - [15/Mar/2024:10:30:00 +0000]", false},
+		{"not syslog at all", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			if got := p.CanParse(tt.line); got != tt.want {
+				t.Errorf("CanParse() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

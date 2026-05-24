@@ -1,0 +1,2 @@
+ok  	github.com/fpncc/log-parser	0.005s	coverage: 55.1% of statements
+ok  	github.com/fpncc/log-parser/parser	0.004s	coverage: 92.9% of statements

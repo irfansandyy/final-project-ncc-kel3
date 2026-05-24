@@ -120,3 +120,24 @@ func TestMapHTTPStatusToLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestNginxParser_CanParse(t *testing.T) {
+	p := &NginxParser{}
+
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{`192.168.1.1 - - [15/Mar/2024:10:30:00 +0000] "GET /api/health HTTP/1.1" 200 1234 "-" "curl/7.68.0"`, true},
+		{`10.0.0.5 - admin [15/Mar/2024:10:30:01 +0000] "POST /api/login HTTP/1.1" 401 89 "https://example.com" "Mozilla/5.0"`, true},
+		{"not nginx at all", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			if got := p.CanParse(tt.line); got != tt.want {
+				t.Errorf("CanParse() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

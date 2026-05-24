@@ -290,3 +290,79 @@ func TestWatcher_GracefulShutdown(t *testing.T) {
 		t.Fatal("Start() did not return after Stop()")
 	}
 }
+
+func TestWatcher_HandleRotation_Rename(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "rename.log")
+	rotatedFile := filepath.Join(dir, "rename.log.1")
+
+	f, err := os.Create(logFile)
+	if err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+
+	var mu sync.Mutex
+	var collected []string
+
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	w, err := NewWatcher(func(sourceID int64, line string) {
+		mu.Lock()
+		collected = append(collected, line)
+		mu.Unlock()
+	}, logger)
+	if err != nil {
+		t.Fatalf("new watcher: %v", err)
+	}
+
+	if err := w.AddPath(3, logFile); err != nil {
+		t.Fatalf("add path: %v", err)
+	}
+
+	go w.Start()
+	defer w.Stop()
+
+	time.Sleep(200 * time.Millisecond)
+
+	if _, err := f.WriteString("before rename\n"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_ = f.Sync()
+
+	waitForLines(t, &mu, &collected, 1, 5*time.Second)
+
+	// Simulate logrotate by renaming the file and creating a new one
+	if err := os.Rename(logFile, rotatedFile); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	// Wait for watcher to trigger handleRotation
+	time.Sleep(200 * time.Millisecond)
+
+	fNew, err := os.Create(logFile)
+	if err != nil {
+		t.Fatalf("create new file: %v", err)
+	}
+	defer fNew.Close()
+
+	time.Sleep(600 * time.Millisecond) // Wait for handleRotation loop
+
+	if _, err := fNew.WriteString("after rename\n"); err != nil {
+		t.Fatalf("write new: %v", err)
+	}
+	_ = fNew.Sync()
+
+	waitForLines(t, &mu, &collected, 2, 5*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(collected) < 2 {
+		t.Fatalf("expected at least 2 lines, got %d", len(collected))
+	}
+	if collected[0] != "before rename" {
+		t.Errorf("line 0: got %q, want %q", collected[0], "before rename")
+	}
+	if collected[1] != "after rename" {
+		t.Errorf("line 1: got %q, want %q", collected[1], "after rename")
+	}
+}
