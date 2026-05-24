@@ -16,7 +16,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const token = useMemo(() => getToken(), []);
   const [email, setEmail] = useState("");
-  const [username, setUsernameInput] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function SettingsPage() {
         "/api/me",
         {
           method: "PATCH",
-          body: JSON.stringify({ username })
+          body: JSON.stringify({ username: usernameInput })
         },
         token
       );
@@ -106,7 +106,7 @@ export default function SettingsPage() {
               minLength={2}
               maxLength={32}
               placeholder="Username"
-              value={username}
+              value={usernameInput}
               onChange={(event) => setUsernameInput(event.target.value)}
             />
             {error ? <p className="error-text">{error}</p> : null}

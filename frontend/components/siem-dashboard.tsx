@@ -42,6 +42,8 @@ const MITRE_COLORS = [
   "#8b949e",
 ];
 
+const FALLBACK_COLOR = "#555";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -59,6 +61,25 @@ function levelClass(level: number): string {
   if (level >= 8) return "siem-lv siem-lv-high";
   if (level >= 5) return "siem-lv siem-lv-med";
   return "siem-lv siem-lv-info";
+}
+
+// ── Area chart path builder (extracted from component to reduce nesting) ──────
+function buildAreaPath(
+  values: number[],
+  maxVal: number,
+  W: number,
+  H: number,
+  fill: boolean
+): string {
+  const pts = values.map((v, i) => [
+    (i / Math.max(values.length - 1, 1)) * W,
+    H - (v / maxVal) * H,
+  ]);
+  const line = pts
+    .map(([x, y], i) => `${i === 0 ? "M" : "L"}${(x ?? 0).toFixed(1)},${(y ?? 0).toFixed(1)}`)
+    .join(" ");
+  if (!fill) return line;
+  return `${line} L${W},${H} L0,${H} Z`;
 }
 
 // ── Mini bar chart (SVG — no external dep) ────────────────────────────────────
@@ -79,7 +100,7 @@ function StackedBarChart({
 
   const W = 540;
   const H = 160;
-  const barW = Math.floor((W - (series.length - 1) * 4) / series.length);
+  const barW = Math.floor((W - (series.length - 1) * 4) / Math.max(series.length, 1));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="siem-chart-svg" aria-hidden="true">
@@ -97,7 +118,7 @@ function StackedBarChart({
               y={yOffset}
               width={barW}
               height={h}
-              fill={colors[ki] ?? "#555"}
+              fill={colors[ki] ?? FALLBACK_COLOR}
               opacity={0.82}
             />
           );
@@ -125,16 +146,6 @@ function AreaChart({
   );
   const maxVal = Math.max(...totals, 1);
 
-  function buildPath(values: number[], fill = false): string {
-    const pts = values.map((v, i) => [
-      (i / (values.length - 1)) * W,
-      H - (v / maxVal) * H,
-    ]);
-    const line = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-    if (!fill) return line;
-    return `${line} L${W},${H} L0,${H} Z`;
-  }
-
   // Accumulate stacked values per key (bottom key is drawn first / largest)
   const stackedKeys = [...keys].reverse();
   const stackedColors = [...colors].reverse();
@@ -142,15 +153,14 @@ function AreaChart({
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="siem-chart-svg" aria-hidden="true">
       {stackedKeys.map((k, ki) => {
-        // Sum from this key upward (i.e. all keys from index ki in reversed list)
         const cumValues = series.map((p) =>
           stackedKeys.slice(ki).reduce((s, sk) => s + (p.counts[sk] ?? 0), 0)
         );
         return (
           <path
             key={k}
-            d={buildPath(cumValues, true)}
-            fill={stackedColors[ki]}
+            d={buildAreaPath(cumValues, maxVal, W, H, true)}
+            fill={stackedColors[ki] ?? FALLBACK_COLOR}
             opacity={0.18 + ki * 0.04}
           />
         );
@@ -162,9 +172,9 @@ function AreaChart({
         return (
           <path
             key={`line-${k}`}
-            d={buildPath(cumValues, false)}
+            d={buildAreaPath(cumValues, maxVal, W, H, false)}
             fill="none"
-            stroke={stackedColors[ki]}
+            stroke={stackedColors[ki] ?? FALLBACK_COLOR}
             strokeWidth={1.5}
             opacity={0.9}
           />
@@ -196,7 +206,7 @@ function DonutChart({ data }: { data: MitreTechnique[] }) {
             cy={CY}
             r={R}
             fill="none"
-            stroke={MITRE_COLORS[i] ?? "#555"}
+            stroke={MITRE_COLORS[i] ?? FALLBACK_COLOR}
             strokeWidth={18}
             strokeDasharray={`${dash} ${gap}`}
             strokeDashoffset={0}
@@ -424,7 +434,7 @@ export default function SiemDashboard() {
                 <AreaChart
                   series={overview.alert_levels_series}
                   keys={levelKeys}
-                  colors={levelKeys.map((k) => LEVEL_COLORS[k])}
+                  colors={levelKeys.map((k) => LEVEL_COLORS[k] ?? FALLBACK_COLOR)}
                 />
               </div>
               <div className="siem-legend">
@@ -432,7 +442,7 @@ export default function SiemDashboard() {
                   <span key={k} className="siem-legend-item">
                     <span
                       className="siem-legend-dot"
-                      style={{ background: LEVEL_COLORS[k] }}
+                      style={{ background: LEVEL_COLORS[k] ?? FALLBACK_COLOR }}
                     />
                     Level {k}
                   </span>
@@ -454,7 +464,7 @@ export default function SiemDashboard() {
                     <span className="siem-mitre-name">
                       <span
                         className="siem-legend-dot"
-                        style={{ background: MITRE_COLORS[i] }}
+                        style={{ background: MITRE_COLORS[i] ?? FALLBACK_COLOR }}
                       />
                       {item.technique}
                     </span>
@@ -477,7 +487,7 @@ export default function SiemDashboard() {
                   <AgentBar
                     key={agent.agent_id}
                     agent={agent}
-                    color={AGENT_COLORS[i] ?? "#555"}
+                    color={AGENT_COLORS[i] ?? FALLBACK_COLOR}
                   />
                 ))}
               </div>
@@ -500,7 +510,7 @@ export default function SiemDashboard() {
                   <span key={agent.agent_id} className="siem-legend-item">
                     <span
                       className="siem-legend-dot"
-                      style={{ background: AGENT_COLORS[i] }}
+                      style={{ background: AGENT_COLORS[i] ?? FALLBACK_COLOR }}
                     />
                     {agent.agent_name}
                   </span>

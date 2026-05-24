@@ -8,7 +8,8 @@ export class APIError extends Error {
 }
 
 const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-export const API_BASE_URL = rawApiBaseUrl && rawApiBaseUrl.trim().length > 0 ? rawApiBaseUrl : "";
+export const API_BASE_URL =
+  rawApiBaseUrl && rawApiBaseUrl.trim().length > 0 ? rawApiBaseUrl : "";
 
 export async function apiFetch<T>(
   path: string,
@@ -34,7 +35,7 @@ export async function apiFetch<T>(
         message = payload.error;
       }
     } catch {
-      // Keep fallback error message if response body is not JSON.
+      // Keep fallback error message if response body is not valid JSON.
     }
     throw new APIError(message, response.status);
   }
