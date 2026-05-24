@@ -19,7 +19,7 @@ import { APIError } from "@/lib/api";
 
 // ── Feature flag ─────────────────────────────────────────────────────────────
 // Set to false once /api/siem/* Go handlers are wired up.
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 // ── Colour maps ───────────────────────────────────────────────────────────────
 const LEVEL_COLORS: Record<string, string> = {
