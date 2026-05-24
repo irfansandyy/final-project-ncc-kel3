@@ -145,6 +145,16 @@ function handleSseBlock(
   return null;
 }
 
+function flushSseBuffer(
+  buffer: string,
+  onDelta: (delta: string) => void
+): SendMessageResponse | null {
+  if (buffer.trim().length === 0) {
+    return null;
+  }
+  return handleSseBlock(buffer, onDelta);
+}
+
 async function readSseStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onDelta: (delta: string) => void
@@ -171,11 +181,9 @@ async function readSseStream(
     }
 
     if (done) {
-      if (buffer.trim().length > 0) {
-        const result = handleSseBlock(buffer, onDelta);
-        if (result) {
-          donePayload = result;
-        }
+      const result = flushSseBuffer(buffer, onDelta);
+      if (result) {
+        donePayload = result;
       }
       streamDone = true;
     }
@@ -611,9 +619,9 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
         </header>
 
         <section className="chat-messages">
-          {!activeChatSlug ? (
+          {activeChatSlug ? null : (
             <p className="muted">Select a chat from the sidebar or create a new one.</p>
-          ) : null}
+          )}
           {activeChatSlug && loadingMessages ? (
             <p className="muted">Loading messages...</p>
           ) : null}

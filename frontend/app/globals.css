@@ -564,7 +564,7 @@ a {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: rgba(63, 185, 80, 0.12);
+  background: #0d1f0f;
   border: 1px solid rgba(63, 185, 80, 0.3);
   border-radius: 20px;
   padding: 3px 10px;
@@ -651,7 +651,7 @@ a {
 
 /* ── Error ── */
 .siem-error {
-  background: rgba(248, 81, 73, 0.1);
+  background: #1e0c0b;
   border-left: 3px solid #f85149;
   color: #f85149;
   padding: 10px 16px;
@@ -927,19 +927,19 @@ a {
 }
 
 .siem-badge-blue {
-  background: rgba(88, 166, 255, 0.12);
+  background: #0d1a2e;
   color: #58a6ff;
   border: 1px solid rgba(88, 166, 255, 0.25);
 }
 
 .siem-badge-orange {
-  background: rgba(210, 153, 34, 0.15);
+  background: #1e1c0e;
   color: #d29922;
   border: 1px solid rgba(210, 153, 34, 0.3);
 }
 
 .siem-badge-gray {
-  background: rgba(139, 148, 158, 0.1);
+  background: #161b22;
   color: #8b949e;
   border: 1px solid rgba(139, 148, 158, 0.2);
 }
@@ -956,10 +956,10 @@ a {
   font-weight: 700;
 }
 
-.siem-lv-crit  { background: rgba(248,  81, 73, 0.25); color: #f85149; }
-.siem-lv-high  { background: rgba(248,  81, 73, 0.15); color: #f85149; }
-.siem-lv-med   { background: rgba(210, 153, 34, 0.2);  color: #d29922; }
-.siem-lv-info  { background: rgba(88,  166, 255, 0.15); color: #58a6ff; }
+.siem-lv-crit  { background: #1e0c0b; color: #f85149; }
+.siem-lv-high  { background: #1e0c0b; color: #f85149; }
+.siem-lv-med   { background: #1e1c0e; color: #d29922; }
+.siem-lv-info  { background: #0d1a2e; color: #58a6ff; }
 
 /* ── Pagination ── */
 .siem-pagination {

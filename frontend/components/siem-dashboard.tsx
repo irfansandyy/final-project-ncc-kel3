@@ -352,8 +352,7 @@ export default function SiemDashboard() {
         </div>
         <div className="siem-topbar-right">
           <span className="siem-live-pill">
-            <span className="siem-live-dot" />
-            LIVE
+            <span className="siem-live-dot" />{" LIVE"}
           </span>
           <span className="siem-topbar-meta">prod-cluster</span>
           <button
