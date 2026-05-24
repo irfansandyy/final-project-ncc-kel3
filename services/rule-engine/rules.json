@@ -1,0 +1,62 @@
+[
+  {
+    "name": "High Frequency Errors Detected",
+    "description": "Deteksi error beruntun 5 kali atau lebih dalam waktu 30 detik pada log",
+    "condition": {
+      "type": "threshold",
+      "field": "level",
+      "pattern": "ERROR",
+      "threshold": 5,
+      "window_seconds": 30
+    },
+    "severity": "WARN",
+    "action": {
+      "notify_email": true
+    },
+    "enabled": true,
+    "version": 1
+  },
+  {
+    "name": "SQL Injection Detected",
+    "description": "Mendeteksi adanya percobaan serangan SQL Injection pada pesan log.",
+    "condition": {
+      "type": "pattern",
+      "field": "message",
+      "pattern": "(UNION\\s+SELECT|SELECT\\s+.*\\s+FROM|'\\s*OR\\s*'1'\\s*=\\s*'1)",
+      "threshold": 1,
+      "window_seconds": 10
+    },
+    "severity": "CRITICAL",
+    "action": {
+      "webhook_url": "https://api.kelompok3.local/alert"
+    },
+    "enabled": true,
+    "version": 1
+  },
+  {
+    "name": "Brute Force Attack Attempt",
+    "description": "Kombinasi mendeteksi level WARN/ERROR dan teks gagal login secara berulang.",
+    "condition": {
+      "type": "compound",
+      "operator": "AND",
+      "conditions": [
+        {
+          "type": "pattern",
+          "field": "message",
+          "pattern": "(failed login|unauthorized|wrong password)"
+        },
+        {
+          "type": "threshold",
+          "threshold": 3,
+          "window_seconds": 60
+        }
+      ]
+    },
+    "severity": "CRITICAL",
+    "action": {
+      "notify_email": true
+    },
+    "enabled": true,
+    "version": 1
+  }
+]
