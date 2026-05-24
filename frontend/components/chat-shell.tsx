@@ -167,7 +167,7 @@ async function readSseStream(
   while (!streamDone) {
     const { value, done } = await reader.read(); // eslint-disable-line no-await-in-loop
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    buffer = buffer.replace(/\r\n/g, "\n");
+    buffer = buffer.replaceAll("\r\n", "\n");
 
     let splitIndex = buffer.indexOf("\n\n");
     while (splitIndex >= 0) {
