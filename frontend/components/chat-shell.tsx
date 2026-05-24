@@ -81,6 +81,123 @@ function formatMessageTime(createdAt: string): string {
   });
 }
 
+// ── SSE stream helpers ────────────────────────────────────────────────────────
+
+type SseEventBlock = {
+  event: string;
+  dataRaw: string;
+};
+
+function parseSseBlock(block: string): SseEventBlock {
+  const lines = block.split("\n");
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trim());
+    }
+  }
+
+  return { event, dataRaw: dataLines.join("\n") };
+}
+
+function handleSseBlock(
+  block: string,
+  onDelta: (delta: string) => void
+): SendMessageResponse | null {
+  const { event, dataRaw } = parseSseBlock(block);
+
+  if (dataRaw.length === 0) {
+    return null;
+  }
+
+  if (event === "token") {
+    try {
+      const payload = JSON.parse(dataRaw) as { delta?: string };
+      if (payload.delta) {
+        onDelta(payload.delta);
+      }
+    } catch {
+      // Ignore malformed token chunk — streaming continues.
+    }
+    return null;
+  }
+
+  if (event === "error") {
+    let errorMessage = "streaming failed";
+    try {
+      const payload = JSON.parse(dataRaw) as { error?: string };
+      errorMessage = payload.error ?? errorMessage;
+    } catch {
+      // Use default error message when payload is not valid JSON.
+    }
+    throw new APIError(errorMessage, 500);
+  }
+
+  if (event === "done") {
+    return JSON.parse(dataRaw) as SendMessageResponse;
+  }
+
+  return null;
+}
+
+function flushSseBuffer(
+  buffer: string,
+  onDelta: (delta: string) => void
+): SendMessageResponse | null {
+  if (buffer.trim().length === 0) {
+    return null;
+  }
+  return handleSseBlock(buffer, onDelta);
+}
+
+async function readSseStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onDelta: (delta: string) => void
+): Promise<SendMessageResponse> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload: SendMessageResponse | null = null;
+  let streamDone = false;
+
+  while (!streamDone) {
+    const { value, done } = await reader.read(); // eslint-disable-line no-await-in-loop
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    buffer = buffer.replaceAll("\r\n", "\n");
+
+    let splitIndex = buffer.indexOf("\n\n");
+    while (splitIndex >= 0) {
+      const block = buffer.slice(0, splitIndex);
+      buffer = buffer.slice(splitIndex + 2);
+      const result = handleSseBlock(block, onDelta);
+      if (result) {
+        donePayload = result;
+      }
+      splitIndex = buffer.indexOf("\n\n");
+    }
+
+    if (done) {
+      const result = flushSseBuffer(buffer, onDelta);
+      if (result) {
+        donePayload = result;
+      }
+      streamDone = true;
+    }
+  }
+
+  if (!donePayload) {
+    throw new APIError("stream ended without final payload", 500);
+  }
+
+  return donePayload;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function ChatShell({ activeChatSlug }: ChatShellProps) {
   const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -121,30 +238,33 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
     router.replace("/login");
   }, [router]);
 
-  const loadChats = useCallback(async (showLoader = true) => {
-    if (!token) {
-      handleUnauthorized();
-      return;
-    }
-
-    if (showLoader) {
-      setLoadingChats(true);
-    }
-    try {
-      const response = await apiFetch<ChatsResponse>("/api/chats", { method: "GET" }, token);
-      setChats(response.items);
-      chatsCache.items = response.items;
-    } catch (err) {
-      const apiError = err as APIError;
-      if (apiError.status === 401) {
+  const loadChats = useCallback(
+    async (showLoader = true) => {
+      if (!token) {
         handleUnauthorized();
         return;
       }
-      setError(apiError.message);
-    } finally {
-      setLoadingChats(false);
-    }
-  }, [handleUnauthorized, token]);
+
+      if (showLoader) {
+        setLoadingChats(true);
+      }
+      try {
+        const response = await apiFetch<ChatsResponse>("/api/chats", { method: "GET" }, token);
+        setChats(response.items);
+        chatsCache.items = response.items;
+      } catch (err) {
+        const apiError = err as APIError;
+        if (apiError.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        setError(apiError.message);
+      } finally {
+        setLoadingChats(false);
+      }
+    },
+    [handleUnauthorized, token]
+  );
 
   const loadProfile = useCallback(async () => {
     if (!token) {
@@ -219,11 +339,11 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
   }, [handleUnauthorized, loadChats, loadProfile, token]);
 
   useEffect(() => {
-    if (!activeChatSlug) {
+    if (activeChatSlug) {
+      void loadMessages(activeChatSlug);
+    } else {
       setMessages([]);
-      return;
     }
-    void loadMessages(activeChatSlug);
   }, [activeChatSlug, loadMessages]);
 
   useEffect(() => {
@@ -288,7 +408,7 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
           message = payload.error;
         }
       } catch {
-        // keep fallback message
+        // Keep fallback message when response body is not valid JSON.
       }
       throw new APIError(message, response.status);
     }
@@ -297,87 +417,7 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
       throw new APIError("streaming response body is empty", 500);
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let donePayload: SendMessageResponse | null = null;
-
-    const processEventBlock = (block: string) => {
-      const lines = block.split("\n");
-      let event = "message";
-      const dataLines: string[] = [];
-
-      for (const rawLine of lines) {
-        const line = rawLine.trimEnd();
-        if (line.startsWith("event:")) {
-          event = line.slice("event:".length).trim();
-          continue;
-        }
-        if (line.startsWith("data:")) {
-          dataLines.push(line.slice("data:".length).trim());
-        }
-      }
-
-      if (dataLines.length === 0) {
-        return;
-      }
-
-      const dataRaw = dataLines.join("\n");
-      if (event === "token") {
-        try {
-          const payload = JSON.parse(dataRaw) as { delta?: string };
-          if (payload.delta) {
-            onDelta(payload.delta);
-          }
-        } catch {
-          // ignore malformed chunk
-        }
-        return;
-      }
-
-      if (event === "error") {
-        try {
-          const payload = JSON.parse(dataRaw) as { error?: string };
-          throw new APIError(payload.error ?? "streaming failed", 500);
-        } catch (err) {
-          if (err instanceof APIError) {
-            throw err;
-          }
-          throw new APIError("streaming failed", 500);
-        }
-      }
-
-      if (event === "done") {
-        donePayload = JSON.parse(dataRaw) as SendMessageResponse;
-      }
-    };
-
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-      buffer = buffer.replace(/\r\n/g, "\n");
-
-      let splitIndex = buffer.indexOf("\n\n");
-      while (splitIndex >= 0) {
-        const block = buffer.slice(0, splitIndex);
-        buffer = buffer.slice(splitIndex + 2);
-        processEventBlock(block);
-        splitIndex = buffer.indexOf("\n\n");
-      }
-
-      if (done) {
-        if (buffer.trim().length > 0) {
-          processEventBlock(buffer);
-        }
-        break;
-      }
-    }
-
-    if (!donePayload) {
-      throw new APIError("stream ended without final payload", 500);
-    }
-
-    return donePayload;
+    return readSseStream(response.body.getReader(), onDelta);
   }
 
   async function handleNewChat() {
@@ -397,6 +437,45 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
       }
       setError(apiError.message);
     }
+  }
+
+  async function handleSendError(
+    err: unknown,
+    chatSlug: string | undefined,
+    streamedText: string,
+    optimisticUserId: number,
+    optimisticAssistantId: number
+  ): Promise<boolean> {
+    const possibleAbort = err as { name?: string };
+    const isAbort = possibleAbort.name === "AbortError" || stopRequestedRef.current;
+
+    if (isAbort) {
+      setError(null);
+      setMessages((prev) => {
+        const stopped = prev.map((msg) =>
+          msg.id === optimisticAssistantId
+            ? { ...msg, content: streamedText.trim() ? streamedText : "Stopped." }
+            : msg
+        );
+        if (chatSlug) {
+          messagesCache[chatSlug] = stopped;
+        }
+        return stopped;
+      });
+      await loadChats(false);
+      return true;
+    }
+
+    const apiError = err as APIError;
+    if (apiError.status === 401) {
+      handleUnauthorized();
+      return true;
+    }
+    setMessages((prev) =>
+      prev.filter((msg) => msg.id !== optimisticUserId && msg.id !== optimisticAssistantId)
+    );
+    setError(apiError.message);
+    return false;
   }
 
   async function handleSendMessage(event: FormEvent) {
@@ -432,14 +511,19 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
         router.push(`/chat/${chatSlug}`);
       }
 
-      const response = await streamMessage(chatSlug, prompt, (delta) => {
-        streamedText += delta;
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === optimisticAssistantId ? { ...msg, content: streamedText } : msg
-          )
-        );
-      }, streamAbort.signal);
+      const response = await streamMessage(
+        chatSlug,
+        prompt,
+        (delta) => {
+          streamedText += delta;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === optimisticAssistantId ? { ...msg, content: streamedText } : msg
+            )
+          );
+        },
+        streamAbort.signal
+      );
 
       setMessages((prev) => {
         const withoutOptimistic = prev.filter(
@@ -453,34 +537,7 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
       });
       await loadChats(false);
     } catch (err) {
-      const possibleAbort = err as { name?: string };
-      const isAbort = possibleAbort.name === "AbortError" || stopRequestedRef.current;
-      if (isAbort) {
-        setError(null);
-        setMessages((prev) => {
-          const stopped = prev.map((msg) =>
-            msg.id === optimisticAssistantId
-              ? { ...msg, content: streamedText.trim() ? streamedText : "Stopped." }
-              : msg
-          );
-          if (chatSlug) {
-            messagesCache[chatSlug] = stopped;
-          }
-          return stopped;
-        });
-        await loadChats(false);
-        return;
-      }
-
-      const apiError = err as APIError;
-      if (apiError.status === 401) {
-        handleUnauthorized();
-        return;
-      }
-      setMessages((prev) =>
-        prev.filter((msg) => msg.id !== optimisticUserId && msg.id !== optimisticAssistantId)
-      );
-      setError(apiError.message);
+      await handleSendError(err, chatSlug, streamedText, optimisticUserId, optimisticAssistantId);
     } finally {
       setSending(false);
       streamAbortRef.current = null;
@@ -512,7 +569,9 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
 
         <ul className="chat-list">
           {loadingChats ? <li className="muted">Loading chats...</li> : null}
-          {!loadingChats && chats.length === 0 ? <li className="muted">No chat history yet.</li> : null}
+          {!loadingChats && chats.length === 0 ? (
+            <li className="muted">No chat history yet.</li>
+          ) : null}
           {chats.map((chat) => (
             <li key={chat.slug}>
               <Link
@@ -560,8 +619,12 @@ export default function ChatShell({ activeChatSlug }: ChatShellProps) {
         </header>
 
         <section className="chat-messages">
-          {!activeChatSlug ? <p className="muted">Select a chat from the sidebar or create a new one.</p> : null}
-          {activeChatSlug && loadingMessages ? <p className="muted">Loading messages...</p> : null}
+          {activeChatSlug ? null : (
+            <p className="muted">Select a chat from the sidebar or create a new one.</p>
+          )}
+          {activeChatSlug && loadingMessages ? (
+            <p className="muted">Loading messages...</p>
+          ) : null}
           {activeChatSlug && !loadingMessages && messages.length === 0 ? (
             <p className="muted">No messages yet. Send the first prompt.</p>
           ) : null}

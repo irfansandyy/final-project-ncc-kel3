@@ -100,7 +100,30 @@ pipeline {
                     when { expression { fileExists(env.NEXTJS_SERVICES) } }
                     steps {
                         dir(env.NEXTJS_SERVICES) {
-                            sh 'npx jest --ci --coverage --passWithNoTests'
+                            sh '''
+                                # Re-run npm ci in case this agent workspace is fresh
+                                # (Lint and Test stages may run on different executors)
+                                npm ci --prefer-offline --loglevel=warn
+
+                                # Run Jest with:
+                                #   --ci          : treats snapshot mismatches as failures, no watch mode
+                                #   --coverage    : collect coverage
+                                #   --coverageReporters lcov text-summary : produce lcov.info for SonarQube
+                                #                   and a human-readable summary in the build log
+                                #   --passWithNoTests : don't fail if no test files exist yet
+                                npx jest \
+                                    --ci \
+                                    --coverage \
+                                    --coverageReporters lcov text-summary \
+                                    --passWithNoTests
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            // Archive the lcov report as a build artifact for debugging
+                            archiveArtifacts artifacts: "${env.NEXTJS_SERVICES}/coverage/lcov.info",
+                                             allowEmptyArchive: true
                         }
                     }
                 }

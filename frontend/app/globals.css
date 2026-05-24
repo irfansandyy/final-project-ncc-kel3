@@ -445,3 +445,589 @@ a {
     max-width: 100px;
   }
 }
+
+/* ==========================================================================
+   SIEM Dashboard — dark theme
+   Add these rules to frontend/app/globals.css (or import this file there)
+   ========================================================================== */
+
+/* ── Shell ── */
+.siem-shell {
+  min-height: 100vh;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 12px;
+}
+
+.siem-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 100vh;
+  color: #8b949e;
+}
+
+.siem-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(88, 166, 255, 0.2);
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: siem-spin 0.75s linear infinite;
+}
+
+@keyframes siem-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Top bar ── */
+.siem-topbar {
+  background: #161b22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.siem-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.siem-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #e6edf3;
+}
+
+.siem-logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #58a6ff;
+  animation: siem-pulse 2s infinite;
+}
+
+.siem-logo-sep {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+@keyframes siem-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+.siem-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.siem-nav-tab {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #8b949e;
+  cursor: pointer;
+  user-select: none;
+}
+
+.siem-nav-tab:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.siem-nav-active {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.siem-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.siem-live-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #0d1f0f;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+  border-radius: 20px;
+  padding: 3px 10px;
+  color: #3fb950;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.siem-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3fb950;
+  animation: siem-pulse 1.5s infinite;
+}
+
+.siem-topbar-meta {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.siem-refresh-btn {
+  background: #58a6ff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  color: #0d1117;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.siem-refresh-btn:hover {
+  background: #79b8ff;
+}
+
+.siem-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Filter bar ── */
+.siem-filterbar {
+  background: #161b22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.siem-filter-chip {
+  background: #21262d;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: #e6edf3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.siem-chip-key {
+  color: #58a6ff;
+}
+
+.siem-add-filter {
+  color: #58a6ff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.siem-time-badge {
+  background: #21262d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: #8b949e;
+  margin-left: auto;
+}
+
+/* ── Error ── */
+.siem-error {
+  background: #1e0c0b;
+  border-left: 3px solid #f85149;
+  color: #f85149;
+  padding: 10px 16px;
+  margin: 0;
+  font-size: 12px;
+}
+
+/* ── Metric cards ── */
+.siem-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.siem-metric {
+  background: #161b22;
+  padding: 14px 20px;
+}
+
+.siem-metric-label {
+  margin: 0 0 4px;
+  font-size: 10px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.siem-metric-value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.siem-metric-sub {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.siem-blue  { color: #58a6ff; }
+.siem-red   { color: #f85149; }
+.siem-orange{ color: #d29922; }
+.siem-green { color: #3fb950; }
+
+/* ── Panels ── */
+.siem-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.siem-panel {
+  background: #161b22;
+}
+
+.siem-panel-narrow {
+  min-width: 0;
+}
+
+.siem-table-panel {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.siem-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.siem-panel-title {
+  font-size: 10px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* ── Charts ── */
+.siem-chart-wrap {
+  padding: 10px 14px;
+  overflow: hidden;
+}
+
+.siem-chart-svg {
+  width: 100%;
+  height: 160px;
+  display: block;
+}
+
+/* ── Legend ── */
+.siem-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 14px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.siem-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #8b949e;
+}
+
+.siem-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Donut ── */
+.siem-donut-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 6px;
+}
+
+.siem-mitre-list {
+  padding: 0 12px 10px;
+}
+
+.siem-mitre-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 10px;
+}
+
+.siem-mitre-row:last-child {
+  border-bottom: none;
+}
+
+.siem-mitre-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #8b949e;
+}
+
+.siem-mitre-pct {
+  color: #e6edf3;
+  font-weight: 600;
+}
+
+/* ── Agent bars ── */
+.siem-agents-wrap {
+  padding: 8px 0;
+}
+
+.siem-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.siem-agent-row:last-child {
+  border-bottom: none;
+}
+
+.siem-agent-name {
+  font-size: 10px;
+  color: #8b949e;
+  width: 88px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.siem-agent-track {
+  flex: 1;
+  height: 6px;
+  background: #21262d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.siem-agent-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.siem-agent-count {
+  font-size: 10px;
+  color: #e6edf3;
+  width: 42px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Table ── */
+.siem-table-wrap {
+  overflow-x: auto;
+}
+
+.siem-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.siem-table th {
+  background: #1c2333;
+  padding: 8px 14px;
+  font-size: 10px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  text-align: left;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.siem-table td {
+  padding: 8px 14px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #e6edf3;
+}
+
+.siem-table tbody tr:hover td {
+  background: #1c2333;
+}
+
+.siem-td-chevron {
+  color: #9ca3af;
+  font-size: 14px;
+  padding-right: 4px !important;
+}
+
+.siem-td-time {
+  color: #9ca3af !important;
+  font-size: 10px !important;
+}
+
+.siem-td-agent {
+  color: #58a6ff !important;
+}
+
+.siem-td-desc {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #c9d1d9 !important;
+}
+
+.siem-td-ruleid {
+  color: #58a6ff !important;
+}
+
+/* ── Badges ── */
+.siem-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.siem-badge-blue {
+  background: #0d1a2e;
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.25);
+}
+
+.siem-badge-orange {
+  background: #1e1c0e;
+  color: #d29922;
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.siem-badge-gray {
+  background: #161b22;
+  color: #8b949e;
+  border: 1px solid rgba(139, 148, 158, 0.2);
+}
+
+/* ── Level pills ── */
+.siem-lv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.siem-lv-crit  { background: #1e0c0b; color: #f85149; }
+.siem-lv-high  { background: #1e0c0b; color: #f85149; }
+.siem-lv-med   { background: #1e1c0e; color: #d29922; }
+.siem-lv-info  { background: #0d1a2e; color: #58a6ff; }
+
+/* ── Pagination ── */
+.siem-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.siem-page-info {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.siem-page-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.siem-pg-btn {
+  background: #21262d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  padding: 3px 9px;
+  color: #8b949e;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.siem-pg-btn:hover:not(:disabled) {
+  background: #30363d;
+  color: #e6edf3;
+}
+
+.siem-pg-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.siem-pg-active {
+  background: #58a6ff !important;
+  color: #0d1117 !important;
+  border-color: #58a6ff !important;
+  font-weight: 700;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .siem-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .siem-charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .siem-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .siem-metric-value {
+    font-size: 22px;
+  }
+}
