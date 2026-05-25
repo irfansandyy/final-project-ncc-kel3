@@ -14,8 +14,6 @@ pipeline {
         string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Git branch to checkout')
         string(name: 'GIT_URL', defaultValue: 'https://github.com/irfansandyy/final-project-ncc-kel3.git', description: 'Repository URL')
         string(name: 'GIT_CREDENTIALS_ID', defaultValue: '', description: 'Optional Jenkins credentials ID for private repos')
-        string(name: 'DEPLOY_USER', defaultValue: 'ubuntu', description: 'SSH user on the target VPS')
-        string(name: 'DEPLOY_DIR', defaultValue: '/opt/app', description: 'Remote directory where the app lives on the VPS')
     }
 
     environment {
@@ -26,10 +24,7 @@ pipeline {
         FE_DIR           = 'frontend'
         GOFLAGS          = '-buildvcs=false'
         SCANNER_HOME     = tool 'SonarQube Scanner'
-        // Production domain
-        DEPLOY_HOST      = 'llama-chat.my.id'
-        // Jenkins credential ID (SSH Username with private key) for the VPS
-        DEPLOY_SSH_CREDS = 'deploy-ssh-key'
+
     }
 
     stages {
@@ -209,48 +204,11 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // DEPLOY STAGE
-        // Deploys to https://llama-chat.my.id — runs on the main branch only.
-        //
-        // Pre-requisites (one-time setup):
-        //   1. Jenkins credential "deploy-ssh-key" → SSH Username with private key
-        //      whose public key is in ~/.ssh/authorized_keys on the VPS.
-        //   2. The VPS already has the repo cloned at DEPLOY_DIR with a .env file.
-        //   3. "SSH Agent" Jenkins plugin installed.
-        // ─────────────────────────────────────────────────────────────────────
-        stage('Deploy') {
-            when {
-                branch 'main'
-            }
-            steps {
-                sshagent(credentials: [env.DEPLOY_SSH_CREDS]) {
-                    sh """
-                        set -e
-
-                        REMOTE="${params.DEPLOY_USER}@${DEPLOY_HOST}"
-                        DIR="${params.DEPLOY_DIR}"
-
-                        echo "==> [1/3] Pulling latest code on llama-chat.my.id"
-                        ssh -o StrictHostKeyChecking=no \$REMOTE \\
-                            "cd \$DIR && git pull origin main"
-
-                        echo "==> [2/3] Rebuilding & restarting containers"
-                        ssh -o StrictHostKeyChecking=no \$REMOTE \\
-                            "cd \$DIR && docker compose --env-file .env up -d --build --remove-orphans"
-
-                        echo "==> [3/3] Health check — https://llama-chat.my.id/health"
-                        ssh -o StrictHostKeyChecking=no \$REMOTE \\
-                            'timeout 120 sh -c '"'"'until curl -ks https://llama-chat.my.id/health | grep -q ok; do echo "Waiting..."; sleep 5; done'"'"' && echo "✓ llama-chat.my.id is healthy"'
-                    """
-                }
-            }
-        }
     }
 
     post {
         success {
-            echo 'Pipeline sukses — https://llama-chat.my.id live!'
+            echo 'Pipeline sukses'
         }
         failure {
             echo 'Pipeline gagal'
