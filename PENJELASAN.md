@@ -1118,5 +1118,553 @@ File Log (/var/log/auth.log)
 
 ---
 
+## 13. Arsitektur Sistem
+
+Berikut adalah diagram arsitektur interaksi antar layanan (service) di dalam sistem:
+
+```mermaid
+graph TD
+    User([User / Browser])
+    
+    subgraph Reverse Proxy
+      Nginx[Nginx :80/443]
+    end
+    
+    subgraph Frontend
+      NextJS[Next.js Dashboard :3000]
+    end
+    
+    subgraph Backend / SIEM API
+      API[Go REST API & WS :8080]
+      LLM[LLM Service / Model Runner]
+    end
+    
+    subgraph SIEM Engine
+      Collector[Log Collector]
+      Parser[Log Parser]
+      RuleEngine[Rule Engine / Alerts]
+    end
+    
+    subgraph Database
+      PG[(PostgreSQL :16)]
+    end
+    
+    subgraph Observability
+      Jenkins[Jenkins CI/CD]
+      Sonar[SonarQube]
+    end
+
+    User -- HTTPS --> Nginx
+    Nginx -- /siem, /* --> NextJS
+    Nginx -- /api/* --> API
+    Nginx -- /jenkins --> Jenkins
+    Nginx -- /sonarqube --> Sonar
+    
+    NextJS -- WebSocket/HTTP --> API
+    API -- Query/Save --> PG
+    API -- Prompt --> LLM
+    
+    Collector -- Read --> LogFiles[Local /var/log]
+    Collector -- Insert Raw --> PG
+    Parser -- Read Raw, Insert Parsed --> PG
+    RuleEngine -- Check Events, Trigger Alert --> PG
+```
+
+---
+
+## 14. Cara Menjalankan Project
+
+### Prerequisites
+- **Docker** (v24.0+)
+- **Docker Compose** (v2.20+)
+- Server/VM dengan RAM minimal 8GB (karena menjalankan LLM model lokal).
+
+### Langkah-langkah
+1. **Clone Repository**
+   ```bash
+   git clone https://github.com/irfansandyy/final-project-ncc-kel3.git
+   cd final-project-ncc-kel3
+   ```
+2. **Setup Environment Variables**
+   Salin template `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   *Ubah nilai `DOMAIN` menjadi IP Public atau domain Anda untuk Nginx routing.*
+3. **Menjalankan Sistem**
+   Anda bisa menggunakan script bootstrap otomatis:
+   ```bash
+   chmod +x scripts/up-with-dmr.sh
+   ./scripts/up-with-dmr.sh
+   ```
+   Atau jalankan secara manual:
+   ```bash
+   docker compose up -d
+   ```
+4. **Verifikasi**
+   Pastikan semua container dalam status `healthy`:
+   ```bash
+   docker compose ps
+   ```
+5. **Akses Layanan**
+   - **Dashboard**: `https://<domain>` atau `http://localhost:3000`
+   - **API Backend**: `https://<domain>/api` atau `http://localhost:8000`
+   - **Jenkins**: `https://<domain>/jenkins/`
+   - **SonarQube**: `https://<domain>/sonarqube/`
+6. **Menghentikan Layanan**
+   ```bash
+   docker compose down
+   ```
+
+---
+
+## 15. Dokumentasi API
+
+Seluruh API berjalan dengan prefix `/api/siem` (untuk fitur SIEM) atau `/api` (untuk fitur Auth & Chat). 
+Semua endpoint di bawah (kecuali login/register) mewajibkan Header:
+`Authorization: Bearer <JWT_TOKEN>`
+
+### [POST] /api/auth/register
+**Deskripsi:** Mendaftarkan pengguna baru.
+**Request:**
+- Headers: `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "email": "user@example.com",
+  "password": "strongpassword",
+  "username": "user123"
+}
+```
+**Response:**
+- Status 201 Created:
+```json
+{
+  "id": "uuid-1234",
+  "email": "user@example.com",
+  "username": "user123"
+}
+```
+- Status 400 Bad Request: `{"error": "email is required and password must be at least 8 characters"}`
+- Status 409 Conflict: `{"error": "email already in use"}`
+
+### [POST] /api/auth/login
+**Deskripsi:** Autentikasi dan mendapatkan token JWT.
+**Request:**
+- Headers: `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "email": "user@example.com",
+  "password": "strongpassword"
+}
+```
+**Response:**
+- Status 200 OK:
+```json
+{
+  "token": "eyJhbG...",
+  "user": {
+    "id": "uuid-1234",
+    "email": "user@example.com",
+    "username": "user123"
+  }
+}
+```
+- Status 401 Unauthorized: `{"error": "invalid credentials"}`
+
+### [GET] /api/chats
+**Deskripsi:** Mengambil daftar percakapan (chat) milik user.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "slug": "chat-slug",
+      "title": "Percakapan 1",
+      "created_at": "2026-05-25T10:00:00Z"
+    }
+  ]
+}
+```
+
+### [POST] /api/chats
+**Deskripsi:** Membuat sesi percakapan baru.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "title": "Percakapan Baru"
+}
+```
+**Response:**
+- Status 201 Created: `{"id": "...", "slug": "...", "title": "...", "created_at": "..."}`
+
+### [GET] /api/chats/{chatSlug}/messages
+**Deskripsi:** Membaca pesan dalam sesi chat.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK:
+```json
+{
+  "items": [
+    { "id": "...", "role": "user", "content": "Halo", "created_at": "..." },
+    { "id": "...", "role": "assistant", "content": "Halo, ada yang bisa dibantu?", "created_at": "..." }
+  ]
+}
+```
+
+### [POST] /api/chats/{chatSlug}/messages
+**Deskripsi:** Mengirim pesan chat secara synchronous.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "content": "Pesan saya"
+}
+```
+**Response:**
+- Status 200 OK:
+```json
+{
+  "user_message": { "id": "...", "role": "user", "content": "Pesan saya" },
+  "assistant_message": { "id": "...", "role": "assistant", "content": "Respons AI" }
+}
+```
+
+### [POST] /api/chats/{chatSlug}/messages/stream
+**Deskripsi:** Mengirim pesan chat dengan respons streaming (Server-Sent Events).
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body: `{"content": "..."}`
+**Response:**
+- Status 200 OK (Content-Type: text/event-stream):
+```text
+event: token
+data: {"delta": " Res"}
+
+event: token
+data: {"delta": "pons"}
+
+event: done
+data: {"user_message": {...}, "assistant_message": {...}}
+```
+
+### [GET] /api/siem/overview
+**Deskripsi:** Mendapatkan ringkasan statistik untuk dashboard utama.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK:
+```json
+{
+  "summary": { "total_events": 54249, "critical_alerts": 4132, "auth_failures": 3214, "auth_successes": 349 },
+  "alert_levels_series": [ { "timestamp": "Jan 1", "counts": {"14": 10} } ],
+  "top_mitre": [ { "technique": "Brute Force", "tactic": "Credential Access", "count": 1572, "percentage": 38 } ],
+  "top_agents": [ { "agent_id": "014", "agent_name": "chatbot-api", "total": 21847, "percentage": 92 } ],
+  "agent_series": [ { "timestamp": "Jan 1", "counts": {"chatbot-api": 100} } ]
+}
+```
+
+### [GET] /api/siem/events
+**Deskripsi:** Mengambil daftar parsed event log dengan mendukung paginasi dan filter.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+- Query Parameters:
+  - `page` (int, opsional, default 1)
+  - `limit` (int, opsional, default 50)
+  - `level` (string, opsional)
+  - `source` (string, opsional)
+**Response:**
+- Status 200 OK:
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "source_id": 2,
+      "timestamp": "2026-05-25T10:00:00Z",
+      "level": "WARN",
+      "source": "nginx",
+      "message": "Rate limit exceeded",
+      "raw": "192.168.1.1 - - [25/May/2026...]",
+      "metadata": {},
+      "created_at": "2026-05-25T10:00:05Z"
+    }
+  ],
+  "total": 1500,
+  "page": 1,
+  "limit": 50
+}
+```
+
+### [GET] /api/siem/events/{id}
+**Deskripsi:** Mendapatkan detail 1 log event spesifik.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK: `{"id": 1, "level": "WARN", ...}`
+- Status 404 Not Found: `{"error": "event not found"}`
+
+### [GET] /api/siem/alerts
+**Deskripsi:** Mengambil daftar alert.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+- Query Parameters:
+  - `page` (int, opsional, default 1)
+  - `page_size` (int, opsional, default 10)
+  - `severity` (string, opsional)
+  - `status` (string, opsional, misal `open`)
+**Response:**
+- Status 200 OK:
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "timestamp": "2026-05-25T10:00:00Z",
+      "agent_id": "01",
+      "agent_name": "app",
+      "technique": "T1110",
+      "tactic": "Credential Access",
+      "description": "Brute force detected",
+      "level": 14,
+      "rule_id": "1"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+### [PATCH] /api/siem/alerts/{id}
+**Deskripsi:** Mengubah status alert.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "status": "resolved"
+}
+```
+**Response:**
+- Status 200 OK: `{ "id": 1, "status": "resolved", ... }`
+
+### [GET] /api/siem/log-sources
+**Deskripsi:** Mendapatkan daftar sumber log yang dipantau.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK:
+```json
+[
+  {
+    "id": 1,
+    "name": "Nginx Log",
+    "file_path": "/var/log/nginx/access.log",
+    "format": "nginx",
+    "enabled": true,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+]
+```
+
+### [POST] /api/siem/log-sources
+**Deskripsi:** Mendaftarkan jalur log baru agar dipantau.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "name": "Backend Log",
+  "file_path": "/var/log/app.log",
+  "format": "json",
+  "enabled": true
+}
+```
+**Response:**
+- Status 201 Created: `{ "id": 2, ... }`
+
+### [DELETE] /api/siem/log-sources/{id}
+**Deskripsi:** Menghapus jalur log dari pantauan.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 204 No Content
+
+### [GET] /api/siem/rules
+**Deskripsi:** Mengambil semua aturan deteksi SIEM.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK: `[ { "id": 1, "name": "Brute Force", "condition": {...}, ... } ]`
+
+### [POST] /api/siem/rules
+**Deskripsi:** Membuat aturan deteksi (rule) baru.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body:
+```json
+{
+  "name": "Multiple Failed Logins",
+  "description": "Mendeteksi auth gagal berulang",
+  "condition": { "type": "threshold", "field": "message", "pattern": "failed" },
+  "severity": "CRITICAL",
+  "action": {},
+  "enabled": true
+}
+```
+**Response:**
+- Status 201 Created: `{ ... }`
+
+### [PUT] /api/siem/rules/{id}
+**Deskripsi:** Memperbarui rule.
+**Request:**
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Request Body: (Sama seperti POST)
+**Response:**
+- Status 200 OK: `{ ... }`
+
+### [DELETE] /api/siem/rules/{id}
+**Deskripsi:** Menghapus rule.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 204 No Content
+
+### [POST] /api/siem/rules/reload
+**Deskripsi:** Memicu ulang (reload) rule engine.
+**Request:**
+- Headers: `Authorization: Bearer <token>`
+**Response:**
+- Status 200 OK: `{"status": "reload_triggered", "timestamp": "..."}`
+
+### [GET] /ws
+**Deskripsi:** Endpoint WebSocket untuk notifikasi log/alert secara Real-Time.
+**Request:**
+- Headers: `Upgrade: websocket`
+
+---
+
+## 16. Struktur Database (Detail)
+
+Berikut adalah ringkasan kolom penting dari skema database:
+
+### Tabel: `events`
+Fungsi: Menyimpan log yang berhasil diekstrak dan diparse (Normalisasi).
+| Kolom | Tipe | Constraint | Deskripsi |
+|---|---|---|---|
+| `id` | BIGSERIAL | PRIMARY KEY | Identifier unik |
+| `source_id` | BIGINT | FK ke `log_sources(id)` | Asal file log (Null jika dihapus) |
+| `timestamp` | TIMESTAMPTZ | NOT NULL | Waktu asli log terjadi |
+| `level` | TEXT | DEFAULT 'INFO' | Severity (`INFO`, `WARN`, `CRITICAL`) |
+| `source` | TEXT | NOT NULL | Nama/Aplikasi asal log |
+| `message` | TEXT | NOT NULL | Pesan log utama |
+| `raw` | TEXT | NULL | Teks log mentah asli |
+| `metadata` | JSONB | DEFAULT '{}' | Metadata tambahan (agent, ip, dll) |
+
+### Tabel: `rules`
+Fungsi: Aturan deteksi anomali.
+| Kolom | Tipe | Constraint | Deskripsi |
+|---|---|---|---|
+| `name` | TEXT | UNIQUE | Nama aturan deteksi |
+| `condition` | JSONB | NOT NULL | Format kondisi threshold/pattern matching |
+| `severity` | TEXT | DEFAULT 'INFO' | Dampak ancaman |
+| `action` | JSONB | DEFAULT '{}' | Action trigger (Webhook, Email) |
+
+### Tabel: `alerts`
+Fungsi: Hasil trigger jika suatu log (events) memenuhi kondisi (rules).
+| Kolom | Tipe | Constraint | Deskripsi |
+|---|---|---|---|
+| `rule_id` | BIGINT | FK ke `rules(id)` | Rule yang terpicu |
+| `event_id` | BIGINT | FK ke `events(id)` | Event log penyebab trigger |
+| `severity` | TEXT | NOT NULL | Severity dari alert |
+| `status` | TEXT | DEFAULT 'open' | Lifecycle (`open`, `acknowledged`, `resolved`) |
+
+*(Tabel `users`, `chats`, `messages`, `raw_logs`, dan `log_sources` juga memiliki fungsi masing-masing yang dapat dilihat pada SQL Script di `/database/init`.)*
+
+---
+
+## 17. Struktur Project
+
+Struktur hirarki folder utama repositori ini:
+
+```text
+final-project-ncc-kel3/
+├── backend/                  → Service REST API Utama (Go) dan auth chat
+├── services/                 → Kumpulan Service SIEM (Go)
+│   ├── api/                  → SIEM API (REST endpoints dan Websocket hub)
+│   ├── log-collector/        → Service penarik log lokal host (/var/log)
+│   └── log-parser/           → Service pengubah raw text log ke struktur JSON
+├── frontend/                 → Next.js UI Dashboard & Chat UI
+├── nginx/                    → Konfigurasi reverse proxy & TLS HTTPS
+├── database/                 → File Inisialisasi Skema PostgreSQL (.sql)
+├── metrics/                  → Service observability (Alertmanager)
+├── scripts/                  → Script deployment & DMR runner
+├── Jenkinsfile               → Definisi Jenkins Pipeline CI/CD
+├── docker-compose.yml        → Docker compose service (Backend, DB, Frontend, SIEM)
+└── docker-compose.jenkins-sonarqube.yml → Docker compose stack CI/CD
+```
+
+---
+
+## 18. Konfigurasi Environment (Detail)
+
+| Variabel | Deskripsi | Contoh Nilai | Wajib |
+|---|---|---|---|
+| `POSTGRES_DB` | Nama database | `chatdb` | Ya |
+| `POSTGRES_USER` | Username database | `postgres` | Ya |
+| `POSTGRES_PASSWORD` | Password database | `postgres` | Ya |
+| `JWT_SECRET` | Secret sign token JWT | `rahasia123` | Ya |
+| `RATE_LIMIT_RPS` | Limit Request Per Second | `5` | Tidak (Def: 5) |
+| `DOMAIN` | Host Nginx (IP / Domain) | `23.100.94.231` | Ya |
+| `LLM_MODEL_NAME` | Model untuk LLM AI Lokal | `hf.co/bartowski/Llama-3.2-3B...` | Ya |
+| `WATCHED_LOG_DIR` | Folder log yang ditarik | `/var/log` | Ya |
+| `COLLECTOR_RELOAD_INTERVAL`| Detik reload sumber log | `30` | Tidak (Def: 30)|
+
+---
+
+## 19. Teknologi yang Digunakan
+
+| Komponen | Teknologi | Versi | Fungsi |
+|---|---|---|---|
+| **Backend & SIEM** | Go | 1.23 | REST API Server, WebSocket, Goroutines |
+| **Frontend UI** | Next.js / TypeScript | 14 | Render SIEM Dashboard dan Panel Chat |
+| **Database** | PostgreSQL | 16-alpine | RDBMS penyimpanan log, rule, auth, config |
+| **Web Server** | Nginx | 1.27-alpine | Reverse proxy & terminasi TLS |
+| **Containerization**| Docker & Compose | - | Isolasi layanan / deployment |
+| **CI/CD** | Jenkins | 2.541.3 | Pipeline build, test, lint, deploy |
+| **Code Quality** | SonarQube | Latest | Static analysis dan coverage scanning |
+
+---
+
+## 20. Monitoring & Observability
+
+Layanan observability disertakan di reverse proxy, dapat diakses pada URI berikut:
+- **Jenkins CI/CD**: `https://<domain>/jenkins/` (Mengelola deployment dan pipeline test).
+- **SonarQube**: `https://<domain>/sonarqube/` (Statistik code smell, security hotspot, coverage tes Go).
+
+---
+
+## 21. Troubleshooting Umum
+
+| Masalah | Penyebab / Solusi |
+|---|---|
+| **API `database not ready` di log backend** | Solusi: Pastikan `healthcheck` postgres berjalan (`docker compose ps`). Jangan *restart* manual, backend terkonfigurasi untuk *wait* via `depends_on`. |
+| **Nginx 502 Bad Gateway saat start awal** | Solusi: Nginx mendeteksi service Node.js atau Go belum sepenuhnya menyala. Cukup tunggu beberapa saat dan *refresh* browser. |
+| **Memori server habis / OOM Killer** | Solusi: LLM (Llama) memakan RAM yang besar. Jalankan `scripts/docker-model-run.sh` manual untuk fallback dari model tipe `Q6_K` ke `Q4_K_M`. |
+| **Logs tidak muncul di dashboard** | Solusi: Pastikan Docker volume `/var/log` dari host sudah dimount dengan benar (sesuai `WATCHED_LOG_DIR` di `.env`). Pastikan collector punya permission baca. |
+
+---
+
 *Laporan ini dibuat berdasarkan source code, konfigurasi, dan WBS project SIEM NCC Laboratory 2026.*  
 *Kelompok 3 · E1 Mochammad Irfan Sandy · E2 Tuti Purwaningsih · E3 Lucky Himawan Prasetya*
