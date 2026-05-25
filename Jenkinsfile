@@ -24,10 +24,6 @@ pipeline {
         FE_DIR           = 'frontend'
         GOFLAGS          = '-buildvcs=false'
         SCANNER_HOME     = tool 'Sonarqube Scanner'
-        VM_HOST = '23.100.94.231'
-        VM_USER = 'azure-fpncc'
-        PROJECT_DIR = '/home/azure-fpncc/final-project-ncc-kel3'
-
     }
 
     stages {
@@ -204,28 +200,6 @@ pipeline {
             steps {
                 timeout(time: 20, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Deploy to VM') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'azure-fpncc-ssh',
-                        usernameVariable: 'SSH_USER',
-                        passwordVariable: 'SSH_PASS'
-                    )
-                ]) {
-                    sh '''
-                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no \
-                            $SSH_USER@$VM_HOST "
-                                set -e
-                                cd $PROJECT_DIR
-                                git pull origin main
-                                ./scripts/up-with-dmr.sh
-                            "
-                    '''
                 }
             }
         }
