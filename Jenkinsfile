@@ -18,8 +18,8 @@ pipeline {
 
     environment {
         SONARQUBE_ENV    = 'sonarqube'
-        PROJECT_KEY      = 'tugas-ncc-irfansandy-backend'
-        PROJECT_NAME     = 'tugas-ncc-irfansandy-fullstack'
+        PROJECT_KEY      = 'FP-KELOMPOK-3-NCC'
+        PROJECT_NAME     = 'FP-KELOMPOK-3-NCC-FULLSTACK'
         GO_DIR           = 'backend'
         FE_DIR           = 'frontend'
         GOFLAGS          = '-buildvcs=false'
