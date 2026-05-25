@@ -14,10 +14,10 @@ pipeline {
         SONAR_TOKEN     = credentials('sonarqube-token')   // Secret-text credential
     }
 
-    tools {
+    // tools {
         // Name must match what you configured in Manage Jenkins → Tools
-        nodejs 'NodeJS-20'
-    }
+        // nodejs 'NodeJS-20'
+    // }
 
     stages {
 
