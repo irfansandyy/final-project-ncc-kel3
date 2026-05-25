@@ -10,7 +10,7 @@ import (
 
 type contextKey string
 
-const userIDContextKey = contextKey("user_id")
+const UserIDKey = contextKey("user_id")
 
 func JWTAuth(authService *services.AuthService) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -33,14 +33,14 @@ func JWTAuth(authService *services.AuthService) func(next http.Handler) http.Han
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), userIDContextKey, userID)
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 func UserIDFromContext(ctx context.Context) (int64, bool) {
-	value := ctx.Value(userIDContextKey)
+	value := ctx.Value(UserIDKey)
 	userID, ok := value.(int64)
 	return userID, ok
 }
