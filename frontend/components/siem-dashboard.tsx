@@ -258,38 +258,46 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
   const [filterKey, setFilterKey] = useState(initialKey);
   const [filterValue, setFilterValue] = useState(initialValue);
 
-  // Close on backdrop click for native dialog
   const dialogRef = useRef<HTMLDialogElement>(null);
 
+  // Handle dialog open/close
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    const handleBackdropClick = (e: MouseEvent) => {
-      const rect = dialog.getBoundingClientRect();
-      const isInDialog = (
-        rect.top <= e.clientY &&
-        e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX &&
-        e.clientX <= rect.left + rect.width
-      );
-      if (!isInDialog) {
-        onClose();
-      }
-    };
-
     if (isOpen) {
       dialog.showModal();
-      dialog.addEventListener('click', handleBackdropClick);
+      
+      // Add event listeners
+      const handleCancel = (e: Event) => {
+        e.preventDefault();
+        onClose();
+      };
+      
+      const handleClick = (e: MouseEvent) => {
+        const rect = dialog.getBoundingClientRect();
+        const isInDialog = (
+          rect.top <= e.clientY &&
+          e.clientY <= rect.top + rect.height &&
+          rect.left <= e.clientX &&
+          e.clientX <= rect.left + rect.width
+        );
+        if (!isInDialog) {
+          onClose();
+        }
+      };
+      
+      dialog.addEventListener('cancel', handleCancel);
+      dialog.addEventListener('click', handleClick);
+      
       return () => {
-        dialog.removeEventListener('click', handleBackdropClick);
+        dialog.removeEventListener('cancel', handleCancel);
+        dialog.removeEventListener('click', handleClick);
       };
     } else {
       dialog.close();
     }
   }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
 
   const handleApply = () => {
     if (filterValue) {
@@ -298,15 +306,13 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
     }
   };
 
-  const handleModalKeyDown = (e: React.KeyboardEvent<HTMLDialogElement>) => {
-    if (e.key === 'Escape') {
-      onClose();
-    } else if (e.key === 'Enter' && filterValue) {
+  // Keyboard handling moved to the buttons and focusable elements
+  const handleKeyDownOnInput = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (e.key === 'Enter' && filterValue) {
       handleApply();
     }
   };
 
-  // FIXED: Extracted nested ternary into separate function
   const renderFilterInput = () => {
     if (filterKey === "severity") {
       return (
@@ -315,6 +321,7 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
           className="siem-modal-select"
           value={filterValue}
           onChange={(e) => setFilterValue(e.target.value)}
+          onKeyDown={handleKeyDownOnInput}
           aria-label="Filter severity value"
         >
           <option value="">-- select --</option>
@@ -333,6 +340,7 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
           className="siem-modal-select"
           value={filterValue}
           onChange={(e) => setFilterValue(e.target.value)}
+          onKeyDown={handleKeyDownOnInput}
           aria-label="Filter status value"
         >
           <option value="">-- select --</option>
@@ -351,6 +359,7 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
         placeholder="e.g. ERROR"
         value={filterValue}
         onChange={(e) => setFilterValue(e.target.value)}
+        onKeyDown={handleKeyDownOnInput}
         aria-label="Filter text value"
       />
     );
@@ -360,7 +369,6 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
     <dialog
       ref={dialogRef}
       className="siem-modal-overlay"
-      onKeyDown={handleModalKeyDown}
       aria-label="Filter dialog"
     >
       <div className="siem-modal">
