@@ -74,6 +74,8 @@ pipeline {
                     steps {
                         dir(env.PYTHON_SERVICES) {
                             sh '''
+                                python3 -m ensurepip --upgrade
+                                python3 -m pip install --upgrade pip 
                                 python3 -m pip install --quiet flake8
                                 flake8 . --max-line-length=120 --exclude=.git,__pycache__,.venv
                             '''
