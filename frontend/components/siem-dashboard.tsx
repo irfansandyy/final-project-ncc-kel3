@@ -245,46 +245,39 @@ function Badge({ label, variant }: { readonly label: string; readonly variant: "
   return <span className={`siem-badge siem-badge-${variant}`}>{label}</span>;
 }
 
-// ── Filter modal component (extracted to reduce complexity) ───────────────────
-interface FilterModalProps {
-  readonly isOpen: boolean;
-  readonly onClose: () => void;
+// ── Filter dropdown component ─────────────────────────────────────────────────
+interface FilterDropdownProps {
   readonly onApply: (key: string, value: string) => void;
-  readonly initialKey?: string;
-  readonly initialValue?: string;
+  readonly onClose: () => void;
 }
 
-function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initialValue = "" }: FilterModalProps) {
-  const [filterKey, setFilterKey] = useState(initialKey);
-  const [filterValue, setFilterValue] = useState(initialValue);
+function FilterDropdown({ onApply, onClose }: FilterDropdownProps) {
+  const [filterKey, setFilterKey] = useState("severity");
+  const [filterValue, setFilterValue] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Reset form when modal opens
+  // Close dropdown when clicking outside
   useEffect(() => {
-    if (isOpen) {
-      setFilterKey(initialKey);
-      setFilterValue(initialValue);
-    }
-  }, [isOpen, initialKey, initialValue]);
-
-  // Handle Escape key globally
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = 'hidden';
-    }
-    
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
     };
-  }, [isOpen, onClose]);
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onClose]);
 
   const handleApply = () => {
     if (filterValue) {
@@ -293,28 +286,16 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (e.key === 'Enter' && filterValue) {
-      handleApply();
-    }
-  };
-
   const renderFilterInput = () => {
     if (filterKey === "severity") {
       return (
         <select
           id="filter-value"
-          className="siem-modal-select"
+          className="siem-dropdown-select"
           value={filterValue}
           onChange={(e) => setFilterValue(e.target.value)}
-          onKeyDown={handleKeyDown}
           aria-label="Filter severity value"
+          autoFocus
         >
           <option value="">-- select --</option>
           <option value="CRITICAL">CRITICAL</option>
@@ -329,11 +310,11 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
       return (
         <select
           id="filter-value"
-          className="siem-modal-select"
+          className="siem-dropdown-select"
           value={filterValue}
           onChange={(e) => setFilterValue(e.target.value)}
-          onKeyDown={handleKeyDown}
           aria-label="Filter status value"
+          autoFocus
         >
           <option value="">-- select --</option>
           <option value="open">open</option>
@@ -346,39 +327,38 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
     return (
       <input
         id="filter-value"
-        className="siem-modal-input"
+        className="siem-dropdown-input"
         type="text"
         placeholder="e.g. ERROR"
         value={filterValue}
         onChange={(e) => setFilterValue(e.target.value)}
-        onKeyDown={handleKeyDown}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && filterValue) {
+            handleApply();
+          }
+        }}
         aria-label="Filter text value"
+        autoFocus
       />
     );
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="siem-modal-overlay"
-      onClick={handleBackdropClick}
-      role="presentation"
-    >
-      <div
-        className="siem-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Filter dialog"
-      >
-        <div className="siem-modal-title">Add Filter</div>
-        <div className="siem-modal-row">
-          <label htmlFor="filter-key" className="siem-modal-label">Field</label>
+    <div className="siem-dropdown" ref={dropdownRef}>
+      <div className="siem-dropdown-header">
+        <span className="siem-dropdown-title">Add Filter</span>
+      </div>
+      <div className="siem-dropdown-body">
+        <div className="siem-dropdown-row">
+          <label htmlFor="filter-key" className="siem-dropdown-label">Field</label>
           <select
             id="filter-key"
-            className="siem-modal-select"
+            className="siem-dropdown-select"
             value={filterKey}
-            onChange={(e) => setFilterKey(e.target.value)}
+            onChange={(e) => {
+              setFilterKey(e.target.value);
+              setFilterValue("");
+            }}
             aria-label="Filter field selector"
           >
             <option value="severity">Severity</option>
@@ -386,29 +366,29 @@ function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initia
             <option value="level">Level</option>
           </select>
         </div>
-        <div className="siem-modal-row">
-          <label htmlFor="filter-value" className="siem-modal-label">Value</label>
+        <div className="siem-dropdown-row">
+          <label htmlFor="filter-value" className="siem-dropdown-label">Value</label>
           {renderFilterInput()}
         </div>
-        <div className="siem-modal-actions">
-          <button
-            type="button"
-            className="siem-modal-cancel"
-            onClick={onClose}
-            aria-label="Cancel filter"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="siem-modal-apply"
-            disabled={!filterValue}
-            onClick={handleApply}
-            aria-label="Apply filter"
-          >
-            Apply
-          </button>
-        </div>
+      </div>
+      <div className="siem-dropdown-footer">
+        <button
+          type="button"
+          className="siem-dropdown-cancel"
+          onClick={onClose}
+          aria-label="Cancel filter"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="siem-dropdown-apply"
+          disabled={!filterValue}
+          onClick={handleApply}
+          aria-label="Apply filter"
+        >
+          Apply
+        </button>
       </div>
     </div>
   );
@@ -425,7 +405,7 @@ export default function SiemDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<{ key: string; value: string } | null>(null);
-  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleUnauthorized = useCallback(() => {
@@ -563,21 +543,25 @@ export default function SiemDashboard() {
             >×</button>
           </span>
         ) : null}
-        <button
-          type="button"
-          className="siem-add-filter"
-          onClick={() => setShowFilterModal(true)}
-          aria-label="Add filter"
-        >+ Add filter</button>
+        <div className="siem-filter-dropdown-container">
+          <button
+            type="button"
+            className="siem-add-filter"
+            onClick={() => setShowDropdown(!showDropdown)}
+            aria-label="Add filter"
+            aria-expanded={showDropdown}
+          >
+            + Add filter
+          </button>
+          {showDropdown && (
+            <FilterDropdown
+              onApply={handleApplyFilter}
+              onClose={() => setShowDropdown(false)}
+            />
+          )}
+        </div>
         <span className="siem-time-badge">⏱ Last 7 days</span>
       </div>
-
-      {/* ── Filter modal ── */}
-      <FilterModal
-        isOpen={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
-        onApply={handleApplyFilter}
-      />
 
       {error ? <p className="siem-error">{error}</p> : null}
 
