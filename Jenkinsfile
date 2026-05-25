@@ -23,7 +23,7 @@ pipeline {
         GO_DIR           = 'backend'
         FE_DIR           = 'frontend'
         GOFLAGS          = '-buildvcs=false'
-        SCANNER_HOME     = tool 'SonarQube Scanner'
+        SCANNER_HOME     = tool 'Sonarqube Scanner'
 
     }
 
