@@ -205,6 +205,28 @@ pipeline {
             }
         }
 
+        stage('Deploy to Azure VM') {
+            steps {
+                echo 'Quality Gate passed! Deploying application to llama-chat.my.id...'
+                
+                sshagent(['azure-vm-key']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no azure-fpncc@23.100.94.231 "
+                            echo 'Connected to Azure VM...'
+                            
+                            # Navigate to the project directory
+                            cd /home/azure-fpncc/final-project-ncc-kel3 || exit 1
+                            
+                            echo 'Pulling latest approved code...'
+                            git pull origin main
+                            
+                            echo 'Restarting services...'
+                            ./scripts/up-with-dmr.sh
+                        "
+                    '''
+                }
+            }
+        }
     }
 
     post {
