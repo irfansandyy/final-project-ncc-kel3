@@ -17,7 +17,7 @@ pipeline {
     }
 
     environment {
-        SONARQUBE_ENV    = 'SonarQube'
+        SONARQUBE_ENV    = 'sonarqube'
         PROJECT_KEY      = 'tugas-ncc-irfansandy-backend'
         PROJECT_NAME     = 'tugas-ncc-irfansandy-fullstack'
         GO_DIR           = 'backend'
@@ -180,7 +180,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv() {
+                withSonarQubeEnv("${SONARQUBE_ENV}") {
                     sh '''
                         set -e
                         test -f backend/coverage.out || (echo "Coverage report missing!" && exit 1)
