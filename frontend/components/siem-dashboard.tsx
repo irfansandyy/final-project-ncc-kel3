@@ -245,6 +245,143 @@ function Badge({ label, variant }: { readonly label: string; readonly variant: "
   return <span className={`siem-badge siem-badge-${variant}`}>{label}</span>;
 }
 
+// ── Filter modal component (extracted to reduce complexity) ───────────────────
+interface FilterModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: (key: string, value: string) => void;
+  initialKey?: string;
+  initialValue?: string;
+}
+
+function FilterModal({ isOpen, onClose, onApply, initialKey = "severity", initialValue = "" }: FilterModalProps) {
+  const [filterKey, setFilterKey] = useState(initialKey);
+  const [filterValue, setFilterValue] = useState(initialValue);
+
+  if (!isOpen) return null;
+
+  const handleApply = () => {
+    if (filterValue) {
+      onApply(filterKey, filterValue);
+      onClose();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+    } else if (e.key === 'Enter' && filterValue) {
+      handleApply();
+    }
+  };
+
+  // FIXED: Extracted nested ternary into separate function
+  const renderFilterInput = () => {
+    if (filterKey === "severity") {
+      return (
+        <select
+          id="filter-value"
+          className="siem-modal-select"
+          value={filterValue}
+          onChange={(e) => setFilterValue(e.target.value)}
+          aria-label="Filter severity value"
+        >
+          <option value="">-- select --</option>
+          <option value="CRITICAL">CRITICAL</option>
+          <option value="HIGH">HIGH</option>
+          <option value="WARN">WARN</option>
+          <option value="INFO">INFO</option>
+        </select>
+      );
+    }
+    
+    if (filterKey === "status") {
+      return (
+        <select
+          id="filter-value"
+          className="siem-modal-select"
+          value={filterValue}
+          onChange={(e) => setFilterValue(e.target.value)}
+          aria-label="Filter status value"
+        >
+          <option value="">-- select --</option>
+          <option value="open">open</option>
+          <option value="acknowledged">acknowledged</option>
+          <option value="resolved">resolved</option>
+        </select>
+      );
+    }
+    
+    return (
+      <input
+        id="filter-value"
+        className="siem-modal-input"
+        type="text"
+        placeholder="e.g. ERROR"
+        value={filterValue}
+        onChange={(e) => setFilterValue(e.target.value)}
+        aria-label="Filter text value"
+      />
+    );
+  };
+
+  return (
+    <div
+      className="siem-modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filter modal"
+    >
+      <div
+        className="siem-modal"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        role="document"
+      >
+        <div className="siem-modal-title">Add Filter</div>
+        <div className="siem-modal-row">
+          <label htmlFor="filter-key" className="siem-modal-label">Field</label>
+          <select
+            id="filter-key"
+            className="siem-modal-select"
+            value={filterKey}
+            onChange={(e) => setFilterKey(e.target.value)}
+            aria-label="Filter field selector"
+          >
+            <option value="severity">Severity</option>
+            <option value="status">Status</option>
+            <option value="level">Level</option>
+          </select>
+        </div>
+        <div className="siem-modal-row">
+          <label htmlFor="filter-value" className="siem-modal-label">Value</label>
+          {renderFilterInput()}
+        </div>
+        <div className="siem-modal-actions">
+          <button
+            type="button"
+            className="siem-modal-cancel"
+            onClick={onClose}
+            aria-label="Cancel filter"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="siem-modal-apply"
+            disabled={!filterValue}
+            onClick={handleApply}
+            aria-label="Apply filter"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function SiemDashboard() {
   const router = useRouter();
@@ -257,8 +394,6 @@ export default function SiemDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<{ key: string; value: string } | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [filterKey, setFilterKey] = useState("level");
-  const [filterValue, setFilterValue] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleUnauthorized = useCallback(() => {
@@ -330,6 +465,11 @@ export default function SiemDashboard() {
     return pages;
   }, [page, totalPages]);
 
+  const handleApplyFilter = (key: string, value: string) => {
+    setActiveFilter({ key, value });
+    setPage(1);
+  };
+
   if (loading && !overview) {
     return (
       <div className="siem-shell siem-loading">
@@ -364,6 +504,7 @@ export default function SiemDashboard() {
             type="button"
             onClick={() => { load(false).catch(() => undefined); }}
             disabled={loading}
+            aria-label="Refresh data"
           >
             ↺ Refresh
           </button>
@@ -394,70 +535,17 @@ export default function SiemDashboard() {
           type="button"
           className="siem-add-filter"
           onClick={() => setShowFilterModal(true)}
+          aria-label="Add filter"
         >+ Add filter</button>
         <span className="siem-time-badge">⏱ Last 7 days</span>
       </div>
 
       {/* ── Filter modal ── */}
-      {showFilterModal ? (
-        <div className="siem-modal-overlay" onClick={() => setShowFilterModal(false)}>
-          <div className="siem-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="siem-modal-title">Add Filter</div>
-            <div className="siem-modal-row">
-              <label className="siem-modal-label">Field</label>
-              <select
-                className="siem-modal-select"
-                value={filterKey}
-                onChange={(e) => setFilterKey(e.target.value)}
-              >
-                <option value="severity">Severity</option>
-                <option value="status">Status</option>
-                <option value="level">Level</option>
-              </select>
-            </div>
-            <div className="siem-modal-row">
-              <label className="siem-modal-label">Value</label>
-              {filterKey === "severity" ? (
-                <select className="siem-modal-select" value={filterValue} onChange={(e) => setFilterValue(e.target.value)}>
-                  <option value="">-- select --</option>
-                  <option value="CRITICAL">CRITICAL</option>
-                  <option value="HIGH">HIGH</option>
-                  <option value="WARN">WARN</option>
-                  <option value="INFO">INFO</option>
-                </select>
-              ) : filterKey === "status" ? (
-                <select className="siem-modal-select" value={filterValue} onChange={(e) => setFilterValue(e.target.value)}>
-                  <option value="">-- select --</option>
-                  <option value="open">open</option>
-                  <option value="acknowledged">acknowledged</option>
-                  <option value="resolved">resolved</option>
-                </select>
-              ) : (
-                <input
-                  className="siem-modal-input"
-                  type="text"
-                  placeholder="e.g. ERROR"
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                />
-              )}
-            </div>
-            <div className="siem-modal-actions">
-              <button type="button" className="siem-modal-cancel" onClick={() => setShowFilterModal(false)}>Cancel</button>
-              <button
-                type="button"
-                className="siem-modal-apply"
-                disabled={!filterValue}
-                onClick={() => {
-                  setActiveFilter({ key: filterKey, value: filterValue });
-                  setPage(1);
-                  setShowFilterModal(false);
-                }}
-              >Apply</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <FilterModal
+        isOpen={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        onApply={handleApplyFilter}
+      />
 
       {error ? <p className="siem-error">{error}</p> : null}
 
@@ -660,6 +748,7 @@ export default function SiemDashboard() {
                   type="button"
                   disabled={page === 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous page"
                 >
                   ‹
                 </button>
@@ -669,6 +758,8 @@ export default function SiemDashboard() {
                     type="button"
                     className={`siem-pg-btn ${page === p ? "siem-pg-active" : ""}`}
                     onClick={() => setPage(p)}
+                    aria-label={`Go to page ${p}`}
+                    aria-current={page === p ? "page" : undefined}
                   >
                     {p}
                   </button>
@@ -678,6 +769,7 @@ export default function SiemDashboard() {
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  aria-label="Next page"
                 >
                   ›
                 </button>
