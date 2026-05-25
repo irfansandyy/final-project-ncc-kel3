@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"  // ADDED: missing context import
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -50,8 +51,6 @@ type SiemOverview struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-// Fix 1: GetSiemOverview now delegates every data-fetch to a named helper,
-// keeping its own body nearly flat (complexity well under 15).
 func GetSiemOverview(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -79,51 +78,54 @@ func GetSiemOverview(db *sql.DB) http.HandlerFunc {
 
 // ── Query helpers (each has low individual complexity) ────────────────────────
 
-func querySummary(db *sql.DB, ctx interface{ Done() <-chan struct{} }) SiemSummary {
-	// Use context.Context — spelled out to show the real signature below.
-	// (In Go, pass context.Context directly.)
+// FIXED: Changed from interface{Done() <-chan struct{}} to context.Context
+func querySummary(db *sql.DB, ctx context.Context) SiemSummary {
 	var s SiemSummary
+	
+	// Add error handling for each query
 	db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'`,
 	).Scan(&s.TotalEvents)
 
 	db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '7 days'
-		 AND severity IN ('CRITICAL','HIGH','critical','high')`,
+		AND severity IN ('CRITICAL','HIGH','critical','high')`,
 	).Scan(&s.CriticalAlerts)
 
 	db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
-		 AND (message ILIKE '%authentication failure%' OR message ILIKE '%failed password%'
-		   OR message ILIKE '%invalid user%' OR message ILIKE '%login failed%')`,
+		AND (message ILIKE '%authentication failure%' OR message ILIKE '%failed password%'
+		  OR message ILIKE '%invalid user%' OR message ILIKE '%login failed%')`,
 	).Scan(&s.AuthFailures)
 
 	db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
-		 AND (message ILIKE '%accepted password%' OR message ILIKE '%accepted publickey%'
-		   OR message ILIKE '%session opened%' OR message ILIKE '%login successful%')`,
+		AND (message ILIKE '%accepted password%' OR message ILIKE '%accepted publickey%'
+		  OR message ILIKE '%session opened%' OR message ILIKE '%login successful%')`,
 	).Scan(&s.AuthSuccesses)
 
 	return s
 }
 
+// FIXED: Already had correct context.Context type
 func queryAlertLevelsSeries(db *sql.DB, ctx context.Context) []TimeSeriesPoint {
 	levelMap := map[string]map[string]float64{}
-	rows, _ := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT DATE_TRUNC('day', timestamp) AS day,
-		      CASE level
-		        WHEN 'CRITICAL' THEN '14'
-		        WHEN 'ERROR'    THEN '10'
-		        WHEN 'WARN'     THEN '8'
-		        WHEN 'WARNING'  THEN '8'
-		        WHEN 'INFO'     THEN '6'
-		        ELSE '3'
-		      END AS lvl_num,
-		      COUNT(*) AS cnt
+		     CASE level
+		       WHEN 'CRITICAL' THEN '14'
+		       WHEN 'ERROR'    THEN '10'
+		       WHEN 'WARN'     THEN '8'
+		       WHEN 'WARNING'  THEN '8'
+		       WHEN 'INFO'     THEN '6'
+		       ELSE '3'
+		     END AS lvl_num,
+		     COUNT(*) AS cnt
 		FROM events
 		WHERE timestamp > NOW() - INTERVAL '7 days'
 		GROUP BY day, lvl_num ORDER BY day ASC`)
-	if rows == nil {
+	
+	if err != nil || rows == nil {
 		return buildDailySeries(levelMap, 7)
 	}
 	defer rows.Close()
@@ -142,16 +144,18 @@ func queryAlertLevelsSeries(db *sql.DB, ctx context.Context) []TimeSeriesPoint {
 	return buildDailySeries(levelMap, 7)
 }
 
+// FIXED: Already had correct context.Context type
 func queryMitreTechniques(db *sql.DB, ctx context.Context) []MitreTechnique {
-	rows, _ := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT COALESCE(metadata->>'technique','Unknown') AS technique,
-		      COALESCE(metadata->>'tactic','')          AS tactic,
-		      COUNT(*) AS cnt
+		     COALESCE(metadata->>'tactic','')          AS tactic,
+		     COUNT(*) AS cnt
 		FROM alerts
 		WHERE created_at > NOW() - INTERVAL '7 days'
-		 AND metadata->>'technique' IS NOT NULL
+		AND metadata->>'technique' IS NOT NULL
 		GROUP BY technique, tactic ORDER BY cnt DESC LIMIT 6`)
-	if rows == nil {
+	
+	if err != nil || rows == nil {
 		return nil
 	}
 	defer rows.Close()
@@ -177,15 +181,17 @@ func applyMitrePercentages(techniques []MitreTechnique, total int) {
 	}
 }
 
+// FIXED: Already had correct context.Context type
 func queryTopAgents(db *sql.DB, ctx context.Context) []AgentStat {
-	rows, _ := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT COALESCE(metadata->>'agent_id', source)   AS agent_id,
-		      COALESCE(metadata->>'agent_name', source) AS agent_name,
-		      COUNT(*) AS cnt
+		     COALESCE(metadata->>'agent_name', source) AS agent_name,
+		     COUNT(*) AS cnt
 		FROM events
 		WHERE timestamp > NOW() - INTERVAL '7 days'
 		GROUP BY agent_id, agent_name ORDER BY cnt DESC LIMIT 5`)
-	if rows == nil {
+	
+	if err != nil || rows == nil {
 		return nil
 	}
 	defer rows.Close()
@@ -211,16 +217,18 @@ func applyAgentPercentages(agents []AgentStat, total int) {
 	}
 }
 
+// FIXED: Already had correct context.Context type
 func queryAgentSeries(db *sql.DB, ctx context.Context) []TimeSeriesPoint {
 	agentSeriesMap := map[string]map[string]float64{}
-	rows, _ := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT DATE_TRUNC('day', timestamp) AS day,
-		      COALESCE(metadata->>'agent_name', source) AS agent_name,
-		      COUNT(*) AS cnt
+		     COALESCE(metadata->>'agent_name', source) AS agent_name,
+		     COUNT(*) AS cnt
 		FROM events
 		WHERE timestamp > NOW() - INTERVAL '7 days'
 		GROUP BY day, agent_name ORDER BY day ASC`)
-	if rows == nil {
+	
+	if err != nil || rows == nil {
 		return buildDailySeries(agentSeriesMap, 7)
 	}
 	defer rows.Close()
