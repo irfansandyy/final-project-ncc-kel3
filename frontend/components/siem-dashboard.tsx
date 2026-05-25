@@ -405,13 +405,10 @@ export default function SiemDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<{ key: string; value: string } | null>(null);
-<<<<<<< HEAD
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterKey, setFilterKey] = useState("level");
   const [filterValue, setFilterValue] = useState("");
-=======
   const [showDropdown, setShowDropdown] = useState(false);
->>>>>>> 65fb1bc6e6fc0131f4b70187d61f05de65bba0e4
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleUnauthorized = useCallback(() => {
@@ -549,13 +546,6 @@ export default function SiemDashboard() {
             >×</button>
           </span>
         ) : null}
-<<<<<<< HEAD
-        <button
-          type="button"
-          className="siem-add-filter"
-          onClick={() => setShowFilterModal(true)}
-        >+ Add filter</button>
-=======
         <div className="siem-filter-dropdown-container">
           <button
             type="button"
@@ -573,7 +563,6 @@ export default function SiemDashboard() {
             />
           )}
         </div>
->>>>>>> 65fb1bc6e6fc0131f4b70187d61f05de65bba0e4
         <span className="siem-time-badge">⏱ Last 7 days</span>
       </div>
 
