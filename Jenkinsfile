@@ -24,6 +24,9 @@ pipeline {
         FE_DIR           = 'frontend'
         GOFLAGS          = '-buildvcs=false'
         SCANNER_HOME     = tool 'Sonarqube Scanner'
+        VM_HOST = '23.100.94.231'
+        VM_USER = 'azure-fpncc'
+        PROJECT_DIR = '/home/azure-fpncc/final-project-ncc-kel3'
 
     }
 
@@ -205,24 +208,23 @@ pipeline {
             }
         }
 
-        stage('Deploy to Azure VM') {
+        stage('Deploy to VM') {
             steps {
-                echo 'Quality Gate passed! Deploying application to llama-chat.my.id...'
-                
-                sshagent(['azure-vm-key']) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'azure-fpncc-ssh',
+                        usernameVariable: 'SSH_USER',
+                        passwordVariable: 'SSH_PASS'
+                    )
+                ]) {
                     sh '''
-                        ssh -o StrictHostKeyChecking=no azure-fpncc@23.100.94.231 "
-                            echo 'Connected to Azure VM...'
-                            
-                            # Navigate to the project directory
-                            cd /home/azure-fpncc/final-project-ncc-kel3 || exit 1
-                            
-                            echo 'Pulling latest approved code...'
-                            git pull origin main
-                            
-                            echo 'Restarting services...'
-                            ./scripts/up-with-dmr.sh
-                        "
+                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no \
+                            $SSH_USER@$VM_HOST "
+                                set -e
+                                cd $PROJECT_DIR
+                                git pull origin main
+                                ./scripts/up-with-dmr.sh
+                            "
                     '''
                 }
             }
