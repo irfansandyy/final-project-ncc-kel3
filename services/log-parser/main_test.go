@@ -1,4 +1,4 @@
-// File: services/log-parser/main_test.go
+k// File: services/log-parser/main_test.go
 package main_test
 
 import (
@@ -24,14 +24,16 @@ func parseNginxAccessLog(line string) (*ParsedEvent, error) {
 	if line == "" {
 		return nil, fmt.Errorf("empty log line")
 	}
+	// Standard nginx combined log splits into 9+ whitespace tokens:
+	// 0:ip  1:-  2:-  3:[date  4:time]  5:"METHOD  6:/path  7:HTTP/x.x"  8:status  9:bytes
 	parts := strings.Fields(line)
-	if len(parts) < 7 {
+	if len(parts) < 9 {
 		return nil, fmt.Errorf("too few fields in nginx log: %q", line)
 	}
 	sourceIP := parts[0]
 	statusCode := 0
-	if _, err := fmt.Sscanf(parts[6], "%d", &statusCode); err != nil {
-		return nil, fmt.Errorf("could not parse status code: %q", parts[6])
+	if _, err := fmt.Sscanf(parts[8], "%d", &statusCode); err != nil {
+		return nil, fmt.Errorf("could not parse status code: %q", parts[8])
 	}
 	return &ParsedEvent{
 		Timestamp:  time.Now(),
@@ -98,7 +100,10 @@ func TestParseNginxAccessLog_TooFewFields_ReturnsError(t *testing.T) {
 
 func TestParseNginxAccessLog_PreservesRawMessage(t *testing.T) {
 	line := `10.0.0.1 - - [15/Jan/2024:10:30:00 +0000] "POST /api/login HTTP/1.1" 401 128`
-	event, _ := parseNginxAccessLog(line)
+	event, err := parseNginxAccessLog(line)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if event.RawMessage != line {
 		t.Errorf("RawMessage not preserved")
 	}
