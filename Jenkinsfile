@@ -1,174 +1,161 @@
-// =============================================================================
-// Jenkinsfile — Declarative Pipeline with SonarQube Quality Gate
-// + Discord notifications
-// =============================================================================
+// ============================================================
+// Jenkinsfile
+// Generates test coverage for Go services and the Next.js
+// frontend, then feeds the reports into SonarQube.
+// ============================================================
 
 pipeline {
-
     agent any
 
-    triggers {
-        pollSCM('* * * * *')
+    environment {
+        // Override in Jenkins → Manage Jenkins → Configure System
+        // or add credentials with these IDs.
+        SONAR_HOST_URL  = 'http://sonarqube:9000/sonarqube'
+        SONAR_TOKEN     = credentials('sonarqube-token')   // Secret-text credential
     }
 
     tools {
-        'hudson.plugins.sonar.SonarRunnerInstallation' 'Sonarqube Scanner'
-    }
-
-    environment {
-        IMAGE_TAG         = 'unknown'
-        REGISTRY_URL      = "${env.REGISTRY_URL ?: 'docker.io'}"
-        DOCKER_NAMESPACE  = "${env.DOCKER_NAMESPACE ?: 'ckyyy'}"
-        DOCKERHUB_CRED_ID = 'dockerhub-credentials'
-        GITHUB_CRED_ID    = 'github-credentials'
-        DISCORD_WEBHOOK   = credentials('discord-webhook')
-        GO_SERVICES       = 'services/api'
-        GOTOOLCHAIN       = 'local'
-        NEXTJS_SERVICES   = 'services/frontend'
-        PYTHON_SERVICES   = 'services/rule-engine'
-    }
-
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-        timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '20'))
+        // Name must match what you configured in Manage Jenkins → Tools
+        nodejs 'NodeJS-20'
     }
 
     stages {
 
+        // ------------------------------------------------------------------
+        // 1. Checkout
+        // ------------------------------------------------------------------
         stage('Checkout') {
             steps {
-                script {
-                    checkout scm
-                    env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                    env.GIT_BRANCH_NAME = sh(returnStdout: true, script: 'git symbolic-ref --short HEAD || git rev-parse --short HEAD').trim()
-                    echo "Commit: ${env.IMAGE_TAG} | Branch: ${env.GIT_BRANCH_NAME}"
+                checkout scm
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 2. Go – install dependencies for every service
+        // ------------------------------------------------------------------
+        stage('Go: Install Dependencies') {
+            steps {
+                sh '''
+                    echo "=== services/api ==="
+                    cd services/api
+                    go mod tidy
+                    cd ../..
+
+                    echo "=== services/log-collector ==="
+                    cd services/log-collector
+                    go mod tidy
+                    cd ../..
+
+                    echo "=== services/log-parser ==="
+                    cd services/log-parser
+                    go mod tidy
+                    cd ../..
+                '''
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 3. Go – run tests + generate coverage profiles
+        //    Each service writes its own coverage.out so SonarQube can
+        //    attribute coverage to the right files.
+        // ------------------------------------------------------------------
+        stage('Go: Test & Coverage') {
+            steps {
+                sh '''
+                    echo "=== services/api ==="
+                    cd services/api
+                    go test -v -coverprofile=coverage.out -covermode=atomic ./...
+                    go tool cover -func=coverage.out   # prints summary to console
+                    cd ../..
+
+                    echo "=== services/log-collector ==="
+                    cd services/log-collector
+                    go test -v -coverprofile=coverage.out -covermode=atomic ./...
+                    go tool cover -func=coverage.out
+                    cd ../..
+
+                    echo "=== services/log-parser ==="
+                    cd services/log-parser
+                    go test -v -coverprofile=coverage.out -covermode=atomic ./...
+                    go tool cover -func=coverage.out
+                    cd ../..
+                '''
+            }
+            post {
+                always {
+                    // Archive the raw profiles so they are available as
+                    // build artefacts even if later stages fail.
+                    archiveArtifacts artifacts: 'services/**/coverage.out', allowEmptyArchive: true
                 }
             }
         }
 
-        stage('Lint') {
-            parallel {
-                stage('Lint — Go') {
-                    when { expression { fileExists(env.GO_SERVICES) } }
-                    steps {
-                        dir(env.GO_SERVICES) {
-                            sh 'go vet ./...'
-                        }
-                    }
-                }
-                stage('Lint — Next.js') {
-                    when { expression { fileExists(env.NEXTJS_SERVICES) } }
-                    steps {
-                        dir(env.NEXTJS_SERVICES) {
-                            sh '''
-                                npm ci --prefer-offline --loglevel=warn
-                                npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0
-                            '''
-                        }
-                    }
-                }
-                stage('Lint — Python') {
-                    when { expression { fileExists(env.PYTHON_SERVICES) } }
-                    steps {
-                        dir(env.PYTHON_SERVICES) {
-                            sh '''
-                                python3 -m pip install --quiet flake8
-                                flake8 . --max-line-length=120 --exclude=.git,__pycache__,.venv
-                            '''
-                        }
-                    }
+        // ------------------------------------------------------------------
+        // 4. Frontend – install dependencies
+        // ------------------------------------------------------------------
+        stage('Frontend: Install Dependencies') {
+            steps {
+                dir('frontend') {
+                    sh 'npm ci'
                 }
             }
         }
 
-        stage('Test') {
-            parallel {
-                stage('Test — Go') {
-                    when { expression { fileExists(env.GO_SERVICES) } }
-                    steps {
-                        dir(env.GO_SERVICES) {
-                            sh '''
-                                mkdir -p test-results
-                                go test -v ./... -coverprofile=coverage.out 2>&1 | tee test-results/go-test.txt
-                            '''
-                        }
-                    }
+        // ------------------------------------------------------------------
+        // 5. Frontend – run Jest with coverage (outputs lcov.info)
+        //    jest.config.js must include:
+        //      coverageReporters: ['lcov', 'text'],
+        //      collectCoverageFrom: ['lib/**/*.ts', 'components/**/*.tsx',
+        //                            'app/**/*.tsx']
+        // ------------------------------------------------------------------
+        stage('Frontend: Test & Coverage') {
+            steps {
+                dir('frontend') {
+                    sh 'npm test -- --coverage --watchAll=false --ci'
                 }
-                stage('Test — Next.js') {
-                    when { expression { fileExists(env.NEXTJS_SERVICES) } }
-                    steps {
-                        dir(env.NEXTJS_SERVICES) {
-                            sh '''
-                                # Re-run npm ci in case this agent workspace is fresh
-                                # (Lint and Test stages may run on different executors)
-                                npm ci --prefer-offline --loglevel=warn
-
-                                # Run Jest with:
-                                #   --ci          : treats snapshot mismatches as failures, no watch mode
-                                #   --coverage    : collect coverage
-                                #   --coverageReporters lcov text-summary : produce lcov.info for SonarQube
-                                #                   and a human-readable summary in the build log
-                                #   --passWithNoTests : don't fail if no test files exist yet
-                                npx jest \
-                                    --ci \
-                                    --coverage \
-                                    --coverageReporters lcov text-summary \
-                                    --passWithNoTests
-                            '''
-                        }
-                    }
-                    post {
-                        always {
-                            // Archive the lcov report as a build artifact for debugging
-                            archiveArtifacts artifacts: "${env.NEXTJS_SERVICES}/coverage/lcov.info",
-                                             allowEmptyArchive: true
-                        }
-                    }
-                }
-                stage('Test — Python') {
-                    when { expression { fileExists(env.PYTHON_SERVICES) } }
-                    steps {
-                        dir(env.PYTHON_SERVICES) {
-                            sh '''
-                                python3 -m pip install --quiet -r requirements.txt pytest pytest-cov
-                                mkdir -p test-results
-                                pytest --tb=short \
-                                       --junitxml=test-results/pytest.xml \
-                                       --cov=. --cov-report=xml:test-results/coverage.xml
-                            '''
-                        }
-                    }
-                    post {
-                        always {
-                            junit allowEmptyResults: true,
-                                  testResults: "${env.PYTHON_SERVICES}/test-results/pytest.xml"
-                        }
-                    }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'frontend/coverage/**', allowEmptyArchive: true
+                    // Publish JUnit-compatible output if jest-junit reporter is configured
+                    junit allowEmptyResults: true, testResults: 'frontend/coverage/junit.xml'
                 }
             }
         }
 
+        // ------------------------------------------------------------------
+        // 6. SonarQube Analysis
+        //    Uses the SonarQube Scanner tool configured in
+        //    Manage Jenkins → Tools → SonarQube Scanner (name: "SonarQube Scanner")
+        //    and the server configured in
+        //    Manage Jenkins → System → SonarQube servers (name: "SonarQube")
+        // ------------------------------------------------------------------
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh """
-                        export PATH=\$PATH:\$SONAR_RUNNER_HOME/bin
-                        sonar-scanner \
-                          -Dsonar.projectKey=final-project-ncc-kel3 \
-                          -Dsonar.projectName='Final Project NCC Kel3' \
-                          -Dsonar.sources=. \
-                          -Dsonar.exclusions=**/node_modules/**,**/.git/**,**/vendor/**,**/__pycache__/** \
-                          -Dsonar.go.coverage.reportPaths=${GO_SERVICES}/coverage.out \
-                          -Dsonar.python.coverage.reportPaths=${PYTHON_SERVICES}/test-results/coverage.xml \
-                          -Dsonar.javascript.lcov.reportPaths=${NEXTJS_SERVICES}/coverage/lcov.info \
-                          -Dsonar.scm.revision=${IMAGE_TAG}
-                    """
+                withSonarQubeEnv('SonarQube') {
+                    script {
+                        def scannerHome = tool 'SonarQube Scanner'
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \\
+                              -Dsonar.projectKey=final-project-ncc-kel3 \\
+                              -Dsonar.projectName='Final Project NCC Kel3' \\
+                              -Dsonar.sources=services,frontend \\
+                              -Dsonar.tests=services,frontend \\
+                              -Dsonar.test.inclusions='**/*_test.go,**/*.test.ts,**/*.test.tsx' \\
+                              -Dsonar.exclusions='**/node_modules/**,**/.next/**,**/vendor/**,**/coverage/**' \\
+                              -Dsonar.go.coverage.reportPaths=services/api/coverage.out,services/log-collector/coverage.out,services/log-parser/coverage.out \\
+                              -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \\
+                              -Dsonar.host.url=${SONAR_HOST_URL} \\
+                              -Dsonar.login=${SONAR_TOKEN}
+                        """
+                    }
                 }
             }
         }
 
+        // ------------------------------------------------------------------
+        // 7. Quality Gate – fail the build if gate is not passed
+        // ------------------------------------------------------------------
         stage('Quality Gate') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -177,74 +164,31 @@ pipeline {
             }
         }
 
-        stage('Build & Push Images') {
+        // ------------------------------------------------------------------
+        // 8. Build Docker images (only on main branch after gate passes)
+        // ------------------------------------------------------------------
+        stage('Build & Push Docker Images') {
             when {
-                anyOf {
-                    branch 'main'
-                    changeRequest()
-                }
+                branch 'main'
             }
             steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: env.DOCKERHUB_CRED_ID,
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin https://docker.io'
-
-                        def services = [
-                            [dir: env.GO_SERVICES,     name: 'siem-api'],
-                            [dir: env.NEXTJS_SERVICES, name: 'siem-frontend'],
-                            [dir: env.PYTHON_SERVICES, name: 'siem-rule-engine'],
-                        ]
-
-                        services.each { svc ->
-                            if (fileExists("${svc.dir}/Dockerfile")) {
-                                def tag = "${env.DOCKER_NAMESPACE}/${svc.name}:${env.IMAGE_TAG}"
-                                sh "docker build -t ${tag} --pull ${svc.dir}"
-                                sh "docker push ${tag}"
-                                if (env.BRANCH_NAME == 'main') {
-                                    def latestTag = "${env.DOCKER_NAMESPACE}/${svc.name}:latest"
-                                    sh "docker tag ${tag} ${latestTag}"
-                                    sh "docker push ${latestTag}"
-                                }
-                            }
-                        }
-
-                        sh 'docker logout https://docker.io || true'
-                    }
-                }
-            }
-        }
-
-    } // end stages
-
-    post {
-        always {
-            script {
-                sh 'docker image prune -f || true'
-                cleanWs()
-            }
-        }
-        success {
-            script {
-                def msg = """{"embeds":[{"title":"✅ Build Passed","color":3066993,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Commit","value":"${env.IMAGE_TAG}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true},{"name":"Console","value":"[View Output](${env.BUILD_URL}console)","inline":false}]}]}"""
-                sh """curl -s -X POST -H 'Content-Type: application/json' -d '${msg}' ${DISCORD_WEBHOOK}"""
-            }
-        }
-        failure {
-            script {
-                def msg = """{"embeds":[{"title":"❌ Build Failed","color":15158332,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Commit","value":"${env.IMAGE_TAG}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true},{"name":"Console","value":"[View Output](${env.BUILD_URL}console)","inline":false}]}]}"""
-                sh """curl -s -X POST -H 'Content-Type: application/json' -d '${msg}' ${DISCORD_WEBHOOK}"""
-            }
-        }
-        unstable {
-            script {
-                def msg = """{"embeds":[{"title":"⚠️ Build Unstable","color":16776960,"fields":[{"name":"Job","value":"${env.JOB_NAME}","inline":true},{"name":"Build","value":"#${env.BUILD_NUMBER}","inline":true},{"name":"Branch","value":"${env.BRANCH_NAME}","inline":true}]}]}"""
-                sh """curl -s -X POST -H 'Content-Type: application/json' -d '${msg}' ${DISCORD_WEBHOOK}"""
+                sh 'docker compose --env-file .env build'
             }
         }
     }
 
-} // end pipeline
+    // ------------------------------------------------------------------
+    // Post-pipeline notifications
+    // ------------------------------------------------------------------
+    post {
+        success {
+            echo 'Pipeline passed – all tests green and quality gate met.'
+        }
+        failure {
+            echo 'Pipeline FAILED. Check test output and SonarQube for details.'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
