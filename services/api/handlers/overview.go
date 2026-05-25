@@ -1,11 +1,17 @@
 package handlers
 
 import (
+	"context"  // ADDED: missing context import
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
 )
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+// Fix 2: single constant eliminates the 3 duplicated "Credential Access" literals
+const tacticCredentialAccess = "Credential Access"
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -45,143 +51,18 @@ type SiemOverview struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
+// Fix 1: GetSiemOverview now delegates every data-fetch to a named helper,
+// keeping its own body nearly flat (complexity well under 15).
 func GetSiemOverview(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// ── Summary ──────────────────────────────────────────────────────────
-		var summary SiemSummary
+		summary := querySummary(db, ctx)
+		alertLevelsSeries := queryAlertLevelsSeries(db, ctx)
+		mitreTechniques := queryMitreTechniques(db, ctx)
+		topAgents := queryTopAgents(db, ctx)
+		agentSeries := queryAgentSeries(db, ctx)
 
-		db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'`,
-		).Scan(&summary.TotalEvents)
-
-		db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '7 days'
-			  AND severity IN ('CRITICAL','HIGH','critical','high')`,
-		).Scan(&summary.CriticalAlerts)
-
-		db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
-			  AND (message ILIKE '%authentication failure%' OR message ILIKE '%failed password%'
-			    OR message ILIKE '%invalid user%' OR message ILIKE '%login failed%')`,
-		).Scan(&summary.AuthFailures)
-
-		db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
-			  AND (message ILIKE '%accepted password%' OR message ILIKE '%accepted publickey%'
-			    OR message ILIKE '%session opened%' OR message ILIKE '%login successful%')`,
-		).Scan(&summary.AuthSuccesses)
-
-		// ── Alert level time series ───────────────────────────────────────
-		levelMap := map[string]map[string]float64{}
-		levelRows, _ := db.QueryContext(ctx, `
-			SELECT DATE_TRUNC('day', timestamp) AS day,
-			       CASE level
-			         WHEN 'CRITICAL' THEN '14'
-			         WHEN 'ERROR'    THEN '10'
-			         WHEN 'WARN'     THEN '8'
-			         WHEN 'WARNING'  THEN '8'
-			         WHEN 'INFO'     THEN '6'
-			         ELSE '3'
-			       END AS lvl_num,
-			       COUNT(*) AS cnt
-			FROM events
-			WHERE timestamp > NOW() - INTERVAL '7 days'
-			GROUP BY day, lvl_num ORDER BY day ASC`)
-		if levelRows != nil {
-			defer levelRows.Close()
-			for levelRows.Next() {
-				var day time.Time
-				var level string
-				var cnt float64
-				levelRows.Scan(&day, &level, &cnt)
-				label := day.Format("Jan 2")
-				if levelMap[label] == nil {
-					levelMap[label] = map[string]float64{}
-				}
-				levelMap[label][level] += cnt
-			}
-		}
-		alertLevelsSeries := buildDailySeries(levelMap, 7)
-
-		// ── MITRE techniques ──────────────────────────────────────────────
-		var mitreTechniques []MitreTechnique
-		mitreRows, _ := db.QueryContext(ctx, `
-			SELECT COALESCE(metadata->>'technique','Unknown') AS technique,
-			       COALESCE(metadata->>'tactic','')          AS tactic,
-			       COUNT(*) AS cnt
-			FROM alerts
-			WHERE created_at > NOW() - INTERVAL '7 days'
-			  AND metadata->>'technique' IS NOT NULL
-			GROUP BY technique, tactic ORDER BY cnt DESC LIMIT 6`)
-		if mitreRows != nil {
-			defer mitreRows.Close()
-			var total int
-			for mitreRows.Next() {
-				var m MitreTechnique
-				mitreRows.Scan(&m.Technique, &m.Tactic, &m.Count)
-				total += m.Count
-				mitreTechniques = append(mitreTechniques, m)
-			}
-			for i := range mitreTechniques {
-				if total > 0 {
-					mitreTechniques[i].Percentage = float64(mitreTechniques[i].Count) / float64(total) * 100
-				}
-			}
-		}
-
-		// ── Top 5 agents ──────────────────────────────────────────────────
-		var topAgents []AgentStat
-		agentRows, _ := db.QueryContext(ctx, `
-			SELECT COALESCE(metadata->>'agent_id', source)   AS agent_id,
-			       COALESCE(metadata->>'agent_name', source) AS agent_name,
-			       COUNT(*) AS cnt
-			FROM events
-			WHERE timestamp > NOW() - INTERVAL '7 days'
-			GROUP BY agent_id, agent_name ORDER BY cnt DESC LIMIT 5`)
-		if agentRows != nil {
-			defer agentRows.Close()
-			var total int
-			for agentRows.Next() {
-				var a AgentStat
-				agentRows.Scan(&a.AgentID, &a.AgentName, &a.Total)
-				total += a.Total
-				topAgents = append(topAgents, a)
-			}
-			for i := range topAgents {
-				if total > 0 {
-					topAgents[i].Percentage = float64(topAgents[i].Total) / float64(total) * 100
-				}
-			}
-		}
-
-		// ── Agent time series ─────────────────────────────────────────────
-		agentSeriesMap := map[string]map[string]float64{}
-		aSeriesRows, _ := db.QueryContext(ctx, `
-			SELECT DATE_TRUNC('day', timestamp) AS day,
-			       COALESCE(metadata->>'agent_name', source) AS agent_name,
-			       COUNT(*) AS cnt
-			FROM events
-			WHERE timestamp > NOW() - INTERVAL '7 days'
-			GROUP BY day, agent_name ORDER BY day ASC`)
-		if aSeriesRows != nil {
-			defer aSeriesRows.Close()
-			for aSeriesRows.Next() {
-				var day time.Time
-				var name string
-				var cnt float64
-				aSeriesRows.Scan(&day, &name, &cnt)
-				label := day.Format("Jan 2")
-				if agentSeriesMap[label] == nil {
-					agentSeriesMap[label] = map[string]float64{}
-				}
-				agentSeriesMap[label][name] += cnt
-			}
-		}
-		agentSeries := buildDailySeries(agentSeriesMap, 7)
-
-		// ── Use realistic mock data when DB is empty ──────────────────────
 		if summary.TotalEvents == 0 {
 			summary, alertLevelsSeries, mitreTechniques, topAgents, agentSeries = mockSiemData()
 		}
@@ -197,6 +78,179 @@ func GetSiemOverview(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ── Query helpers (each has low individual complexity) ────────────────────────
+
+// FIXED: Changed from interface{Done() <-chan struct{}} to context.Context
+func querySummary(db *sql.DB, ctx context.Context) SiemSummary {
+	var s SiemSummary
+	
+	// Add error handling for each query
+	db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'`,
+	).Scan(&s.TotalEvents)
+
+	db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '7 days'
+		AND severity IN ('CRITICAL','HIGH','critical','high')`,
+	).Scan(&s.CriticalAlerts)
+
+	db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
+		AND (message ILIKE '%authentication failure%' OR message ILIKE '%failed password%'
+		  OR message ILIKE '%invalid user%' OR message ILIKE '%login failed%')`,
+	).Scan(&s.AuthFailures)
+
+	db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE timestamp > NOW() - INTERVAL '7 days'
+		AND (message ILIKE '%accepted password%' OR message ILIKE '%accepted publickey%'
+		  OR message ILIKE '%session opened%' OR message ILIKE '%login successful%')`,
+	).Scan(&s.AuthSuccesses)
+
+	return s
+}
+
+// FIXED: Already had correct context.Context type
+func queryAlertLevelsSeries(db *sql.DB, ctx context.Context) []TimeSeriesPoint {
+	levelMap := map[string]map[string]float64{}
+	rows, err := db.QueryContext(ctx, `
+		SELECT DATE_TRUNC('day', timestamp) AS day,
+		     CASE level
+		       WHEN 'CRITICAL' THEN '14'
+		       WHEN 'ERROR'    THEN '10'
+		       WHEN 'WARN'     THEN '8'
+		       WHEN 'WARNING'  THEN '8'
+		       WHEN 'INFO'     THEN '6'
+		       ELSE '3'
+		     END AS lvl_num,
+		     COUNT(*) AS cnt
+		FROM events
+		WHERE timestamp > NOW() - INTERVAL '7 days'
+		GROUP BY day, lvl_num ORDER BY day ASC`)
+	
+	if err != nil || rows == nil {
+		return buildDailySeries(levelMap, 7)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var day time.Time
+		var level string
+		var cnt float64
+		rows.Scan(&day, &level, &cnt)
+		label := day.Format("Jan 2")
+		if levelMap[label] == nil {
+			levelMap[label] = map[string]float64{}
+		}
+		levelMap[label][level] += cnt
+	}
+	return buildDailySeries(levelMap, 7)
+}
+
+// FIXED: Already had correct context.Context type
+func queryMitreTechniques(db *sql.DB, ctx context.Context) []MitreTechnique {
+	rows, err := db.QueryContext(ctx, `
+		SELECT COALESCE(metadata->>'technique','Unknown') AS technique,
+		     COALESCE(metadata->>'tactic','')          AS tactic,
+		     COUNT(*) AS cnt
+		FROM alerts
+		WHERE created_at > NOW() - INTERVAL '7 days'
+		AND metadata->>'technique' IS NOT NULL
+		GROUP BY technique, tactic ORDER BY cnt DESC LIMIT 6`)
+	
+	if err != nil || rows == nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var techniques []MitreTechnique
+	var total int
+	for rows.Next() {
+		var m MitreTechnique
+		rows.Scan(&m.Technique, &m.Tactic, &m.Count)
+		total += m.Count
+		techniques = append(techniques, m)
+	}
+	applyMitrePercentages(techniques, total)
+	return techniques
+}
+
+func applyMitrePercentages(techniques []MitreTechnique, total int) {
+	if total == 0 {
+		return
+	}
+	for i := range techniques {
+		techniques[i].Percentage = float64(techniques[i].Count) / float64(total) * 100
+	}
+}
+
+// FIXED: Already had correct context.Context type
+func queryTopAgents(db *sql.DB, ctx context.Context) []AgentStat {
+	rows, err := db.QueryContext(ctx, `
+		SELECT COALESCE(metadata->>'agent_id', source)   AS agent_id,
+		     COALESCE(metadata->>'agent_name', source) AS agent_name,
+		     COUNT(*) AS cnt
+		FROM events
+		WHERE timestamp > NOW() - INTERVAL '7 days'
+		GROUP BY agent_id, agent_name ORDER BY cnt DESC LIMIT 5`)
+	
+	if err != nil || rows == nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var agents []AgentStat
+	var total int
+	for rows.Next() {
+		var a AgentStat
+		rows.Scan(&a.AgentID, &a.AgentName, &a.Total)
+		total += a.Total
+		agents = append(agents, a)
+	}
+	applyAgentPercentages(agents, total)
+	return agents
+}
+
+func applyAgentPercentages(agents []AgentStat, total int) {
+	if total == 0 {
+		return
+	}
+	for i := range agents {
+		agents[i].Percentage = float64(agents[i].Total) / float64(total) * 100
+	}
+}
+
+// FIXED: Already had correct context.Context type
+func queryAgentSeries(db *sql.DB, ctx context.Context) []TimeSeriesPoint {
+	agentSeriesMap := map[string]map[string]float64{}
+	rows, err := db.QueryContext(ctx, `
+		SELECT DATE_TRUNC('day', timestamp) AS day,
+		     COALESCE(metadata->>'agent_name', source) AS agent_name,
+		     COUNT(*) AS cnt
+		FROM events
+		WHERE timestamp > NOW() - INTERVAL '7 days'
+		GROUP BY day, agent_name ORDER BY day ASC`)
+	
+	if err != nil || rows == nil {
+		return buildDailySeries(agentSeriesMap, 7)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var day time.Time
+		var name string
+		var cnt float64
+		rows.Scan(&day, &name, &cnt)
+		label := day.Format("Jan 2")
+		if agentSeriesMap[label] == nil {
+			agentSeriesMap[label] = map[string]float64{}
+		}
+		agentSeriesMap[label][name] += cnt
+	}
+	return buildDailySeries(agentSeriesMap, 7)
+}
+
+// ── Series builder ────────────────────────────────────────────────────────────
+
 func buildDailySeries(m map[string]map[string]float64, days int) []TimeSeriesPoint {
 	series := make([]TimeSeriesPoint, 0, days)
 	for i := days - 1; i >= 0; i-- {
@@ -209,6 +263,8 @@ func buildDailySeries(m map[string]map[string]float64, days int) []TimeSeriesPoi
 	}
 	return series
 }
+
+// ── Mock data ─────────────────────────────────────────────────────────────────
 
 func mockSiemData() (SiemSummary, []TimeSeriesPoint, []MitreTechnique, []AgentStat, []TimeSeriesPoint) {
 	levels := []string{"14", "12", "10", "8", "6", "3"}
@@ -250,12 +306,13 @@ func mockSiemData() (SiemSummary, []TimeSeriesPoint, []MitreTechnique, []AgentSt
 
 	summary := SiemSummary{TotalEvents: 54249, CriticalAlerts: 4132, AuthFailures: 3214, AuthSuccesses: 349}
 
+	// Fix 2: use the constant instead of repeating the literal
 	mitre := []MitreTechnique{
-		{Technique: "Brute Force", Tactic: "Credential Access", Count: 1572, Percentage: 38},
+		{Technique: "Brute Force", Tactic: tacticCredentialAccess, Count: 1572, Percentage: 38},
 		{Technique: "Valid Accounts", Tactic: "Initial Access", Count: 869, Percentage: 21},
 		{Technique: "Endpoint DoS", Tactic: "Impact", Count: 579, Percentage: 14},
 		{Technique: "Data Collection", Tactic: "Collection", Count: 496, Percentage: 12},
-		{Technique: "Credential Access", Tactic: "Credential Access", Count: 372, Percentage: 9},
+		{Technique: tacticCredentialAccess, Tactic: tacticCredentialAccess, Count: 372, Percentage: 9},
 		{Technique: "Other", Tactic: "", Count: 248, Percentage: 6},
 	}
 	agents := []AgentStat{
