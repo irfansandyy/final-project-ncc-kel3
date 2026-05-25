@@ -74,7 +74,7 @@ pipeline {
                     steps {
                         dir(env.PYTHON_SERVICES) {
                             sh '''
-                               python3 -m venv venv
+                               apt install python3.13-venv
                                ./venv/bin/pip install flake8
                                ./venv/bin/flake8 .
                             '''
