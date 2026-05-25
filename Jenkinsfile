@@ -180,7 +180,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv("${SONARQUBE_ENV}") {
+                withSonarQubeEnv() {
                     sh '''
                         set -e
                         test -f backend/coverage.out || (echo "Coverage report missing!" && exit 1)
