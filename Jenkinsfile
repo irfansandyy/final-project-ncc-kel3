@@ -74,8 +74,11 @@ pipeline {
                     steps {
                         dir(env.PYTHON_SERVICES) {
                             sh '''
-                                python3 -m ensurepip --upgrade
-                                python3 -m pip install --upgrade pip 
+                                curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                                python3 get-pip.py --user
+            
+           
+                                export PATH=$PATH:~/.local/bin
                                 python3 -m pip install --quiet flake8
                                 flake8 . --max-line-length=120 --exclude=.git,__pycache__,.venv
                             '''
