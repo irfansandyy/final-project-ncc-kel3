@@ -93,9 +93,11 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
     healthcheck:
       test: ["CMD-SHELL", "nginx -t"]
       interval: 30s
