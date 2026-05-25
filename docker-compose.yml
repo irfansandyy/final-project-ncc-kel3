@@ -123,11 +123,11 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-      interval: 30s
+      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 75s
 
   log-parser:
     build:
@@ -146,11 +146,11 @@ services:
       log-collector:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-      interval: 30s
+      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 90s
 
   siem-api:
     build:

@@ -69,10 +69,11 @@ export async function fetchSiemOverview(token: string): Promise<SiemOverview> {
 export async function fetchSiemAlerts(
   token: string,
   page = 1,
-  pageSize = 10
+  pageSize = 10,
+  extraParams = ""
 ): Promise<AlertsPage> {
   return apiFetch<AlertsPage>(
-    `/api/siem/alerts?page=${page}&page_size=${pageSize}`,
+    `/api/siem/alerts?page=${page}&page_size=${pageSize}${extraParams}`,
     { method: "GET" },
     token
   );

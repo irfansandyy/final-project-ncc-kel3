@@ -457,7 +457,7 @@ a {
   background: #0d1117;
   color: #e6edf3;
   font-family: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .siem-loading {
@@ -538,7 +538,7 @@ a {
 .siem-nav-tab {
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: #8b949e;
   cursor: pointer;
   user-select: none;
@@ -634,12 +634,6 @@ a {
   color: #58a6ff;
 }
 
-.siem-add-filter {
-  color: #58a6ff;
-  cursor: pointer;
-  font-size: 11px;
-}
-
 .siem-time-badge {
   background: #21262d;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -675,7 +669,7 @@ a {
 
 .siem-metric-label {
   margin: 0 0 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: #8b949e;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -683,7 +677,7 @@ a {
 
 .siem-metric-value {
   margin: 0;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.5px;
   line-height: 1;
@@ -691,7 +685,7 @@ a {
 
 .siem-metric-sub {
   margin: 4px 0 0;
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca3af;
 }
 
@@ -729,7 +723,7 @@ a {
 }
 
 .siem-panel-title {
-  font-size: 10px;
+  font-size: 11px;
   color: #8b949e;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -760,7 +754,7 @@ a {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: #8b949e;
 }
 
@@ -788,7 +782,7 @@ a {
   justify-content: space-between;
   padding: 4px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .siem-mitre-row:last-child {
@@ -825,7 +819,7 @@ a {
 }
 
 .siem-agent-name {
-  font-size: 10px;
+  font-size: 11px;
   color: #8b949e;
   width: 88px;
   flex-shrink: 0;
@@ -849,7 +843,7 @@ a {
 }
 
 .siem-agent-count {
-  font-size: 10px;
+  font-size: 11px;
   color: #e6edf3;
   width: 42px;
   text-align: right;
@@ -870,7 +864,7 @@ a {
 .siem-table th {
   background: #1c2333;
   padding: 8px 14px;
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca3af;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -881,7 +875,7 @@ a {
 
 .siem-table td {
   padding: 8px 14px;
-  font-size: 11px;
+  font-size: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   color: #e6edf3;
 }
@@ -898,7 +892,7 @@ a {
 
 .siem-td-time {
   color: #9ca3af !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
 }
 
 .siem-td-agent {
@@ -922,7 +916,7 @@ a {
   display: inline-block;
   padding: 2px 6px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -949,10 +943,10 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 18px;
+  width: 26px;
+  height: 20px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -973,7 +967,7 @@ a {
 }
 
 .siem-page-info {
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca3af;
 }
 
@@ -989,7 +983,7 @@ a {
   padding: 3px 9px;
   color: #8b949e;
   font-family: inherit;
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -1010,6 +1004,131 @@ a {
   border-color: #58a6ff !important;
   font-weight: 700;
 }
+
+/* ── Active filter chip ── */
+.siem-filter-chip-active {
+  border-color: rgba(88, 166, 255, 0.5) !important;
+  background: #0d1a2e !important;
+  color: #58a6ff !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.siem-chip-remove {
+  background: none;
+  border: none;
+  color: #58a6ff;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 0 1px;
+  line-height: 1;
+  font-family: inherit;
+  opacity: 0.7;
+}
+.siem-chip-remove:hover { opacity: 1; }
+
+.siem-add-filter {
+  color: #58a6ff;
+  cursor: pointer;
+  font-size: 12px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  padding: 0;
+}
+.siem-add-filter:hover { text-decoration: underline; }
+
+/* ── Filter modal ── */
+.siem-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.siem-modal {
+  background: #161b22;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+
+.siem-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e6edf3;
+  margin-bottom: 16px;
+}
+
+.siem-modal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.siem-modal-label {
+  font-size: 11px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.siem-modal-select,
+.siem-modal-input {
+  background: #21262d;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #e6edf3;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  outline: none;
+  width: 100%;
+}
+.siem-modal-select:focus,
+.siem-modal-input:focus {
+  border-color: #58a6ff;
+}
+
+.siem-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.siem-modal-cancel {
+  background: #21262d;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #8b949e;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.siem-modal-cancel:hover { background: #30363d; color: #e6edf3; }
+
+.siem-modal-apply {
+  background: #58a6ff;
+  border: none;
+  border-radius: 4px;
+  color: #0d1117;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.siem-modal-apply:hover { background: #79b8ff; }
+.siem-modal-apply:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Responsive ── */
 @media (max-width: 900px) {

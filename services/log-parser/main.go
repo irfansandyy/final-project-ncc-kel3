@@ -46,7 +46,7 @@ func main() {
 	}
 	pollInterval := time.Duration(pollIntervalMs) * time.Millisecond
 
-	// 3. Connect to DB
+	// 3. Connect to DB — retry for up to 60 s so we tolerate slow schema init
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		logger.Error("failed to open db connection", "error", err)
@@ -54,11 +54,33 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
-		logger.Error("failed to ping db", "error", err)
-		os.Exit(1)
+	const maxDBRetries = 12
+	const dbRetryDelay = 5 * time.Second
+	for attempt := 1; attempt <= maxDBRetries; attempt++ {
+		pingErr := db.Ping()
+		if pingErr == nil {
+			logger.Info("connected to database", "attempt", attempt)
+			break
+		}
+		if attempt == maxDBRetries {
+			logger.Error("failed to connect to database after retries",
+				"error", pingErr,
+				"attempts", maxDBRetries,
+			)
+			os.Exit(1)
+		}
+		logger.Warn("database not ready, retrying",
+			"error", pingErr,
+			"attempt", attempt,
+			"retry_in", dbRetryDelay,
+		)
+		time.Sleep(dbRetryDelay)
 	}
-	logger.Info("connected to database")
+
+	// Write health sentinel so Docker HEALTHCHECK can verify steady state.
+	if err := os.WriteFile("/tmp/healthy", []byte("ok"), 0644); err != nil {
+		logger.Warn("failed to write health file", "error", err)
+	}
 
 	// 4. Start polling loop
 	ctx, cancel := context.WithCancel(context.Background())

@@ -65,7 +65,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Database ───────────────────────────────────────────────────────
+	// ── Database — retry until DB is ready ─────────────────────────────
+	// The container starts immediately after db reports healthy, but
+	// PostgreSQL may still be initialising schemas. Retry for up to 60s.
 	db, err := sql.Open("pgx", pgDSN)
 	if err != nil {
 		logger.Error("failed to open database", slog.String("error", err.Error()))
@@ -77,14 +79,31 @@ func main() {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if err := db.PingContext(ctx); err != nil {
-		logger.Error("failed to ping database", slog.String("error", err.Error()))
+	const maxDBRetries = 12
+	const dbRetryDelay = 5 * time.Second
+
+	for attempt := 1; attempt <= maxDBRetries; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingErr := db.PingContext(ctx)
 		cancel()
-		os.Exit(1)
+		if pingErr == nil {
+			logger.Info("connected to database", slog.Int("attempt", attempt))
+			break
+		}
+		if attempt == maxDBRetries {
+			logger.Error("failed to connect to database after retries",
+				slog.String("error", pingErr.Error()),
+				slog.Int("attempts", maxDBRetries),
+			)
+			os.Exit(1)
+		}
+		logger.Warn("database not ready, retrying",
+			slog.String("error", pingErr.Error()),
+			slog.Int("attempt", attempt),
+			slog.Duration("retry_in", dbRetryDelay),
+		)
+		time.Sleep(dbRetryDelay)
 	}
-	cancel()
-	logger.Info("connected to database")
 
 	// ── Batch insert channel ───────────────────────────────────────────
 	entryCh := make(chan logEntry, 1000)
@@ -106,11 +125,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load initial sources from the database.
+	// Load initial sources — warn on failure instead of exiting.
+	// Sources may point to files that don't exist yet (e.g. backend.log
+	// is only created once the backend service writes its first line).
 	knownSources := make(map[int64]bool)
 	if err := loadSources(db, w, knownSources, logger); err != nil {
-		logger.Error("failed to load initial sources", slog.String("error", err.Error()))
-		os.Exit(1)
+		logger.Warn("failed to load initial sources (will retry on next reload interval)",
+			slog.String("error", err.Error()),
+		)
 	}
 
 	go w.Start()
@@ -147,6 +169,15 @@ func main() {
 		}
 	}()
 
+	// ── Health file — write a sentinel so the healthcheck can verify ──
+	// Writing /tmp/healthy lets the Docker HEALTHCHECK confirm the process
+	// reached steady state without needing curl/wget in the image.
+	if err := os.WriteFile("/tmp/healthy", []byte("ok"), 0644); err != nil {
+		logger.Warn("failed to write health file", slog.String("error", err.Error()))
+	}
+
+	logger.Info("log-collector running")
+
 	// ── Graceful shutdown ──────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -166,11 +197,15 @@ func main() {
 	batchCancel()
 	batchWg.Wait()
 
+	// 4. Remove health sentinel on clean shutdown.
+	_ = os.Remove("/tmp/healthy")
+
 	logger.Info("log-collector shut down gracefully")
 }
 
 // loadSources queries log_sources for enabled entries and adds any new ones
 // to the watcher. knownSources tracks IDs already added to avoid duplicates.
+// Files that don't exist yet are skipped with a warning (not a fatal error).
 func loadSources(db *sql.DB, w *collector.Watcher, known map[int64]bool, logger *slog.Logger) error {
 	rows, err := db.Query("SELECT id, file_path FROM log_sources WHERE enabled = true")
 	if err != nil {
@@ -191,7 +226,10 @@ func loadSources(db *sql.DB, w *collector.Watcher, known map[int64]bool, logger 
 		}
 
 		if err := w.AddPath(id, filePath); err != nil {
-			logger.Warn("failed to add source",
+			// Log as warn — the file may not exist yet (e.g. backend.log
+			// before the backend has started writing). It will be retried
+			// on the next hot-reload tick.
+			logger.Warn("failed to add source (will retry)",
 				slog.Int64("source_id", id),
 				slog.String("path", filePath),
 				slog.String("error", err.Error()),

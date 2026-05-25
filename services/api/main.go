@@ -73,6 +73,9 @@ func main() {
 	r.Get("/ws", hub.HandleWebSocket())
 
 	r.Route("/api/siem", func(r chi.Router) {
+		// Overview (dashboard summary)
+		r.Get("/overview", handlers.GetSiemOverview(database))
+
 		// Events
 		r.Get("/events", handlers.ListEvents(database))
 		r.Get("/events/{id}", handlers.GetEvent(database))

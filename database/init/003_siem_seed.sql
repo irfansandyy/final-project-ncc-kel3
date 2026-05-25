@@ -2,9 +2,6 @@
 -- 003_siem_seed.sql — Seed realistic SIEM events, rules, and alerts
 -- =============================================================================
 
--- ---------------------------------------------------------------------------
--- Log sources
--- ---------------------------------------------------------------------------
 INSERT INTO log_sources (name, file_path, format) VALUES
   ('Chatbot API',    '/app-logs/chatbot-api.log',  'json'),
   ('NCC Web Server', '/app-logs/ncc-web-srv.log',  'nginx'),
@@ -13,45 +10,39 @@ INSERT INTO log_sources (name, file_path, format) VALUES
   ('Nginx Proxy',    '/app-logs/nginx-proxy.log',  'nginx')
 ON CONFLICT DO NOTHING;
 
--- ---------------------------------------------------------------------------
--- Rules
--- ---------------------------------------------------------------------------
 INSERT INTO rules (name, description, condition, severity, enabled) VALUES
-  ('Brute Force SSH',        'Multiple failed SSH login attempts',
+  ('Brute Force SSH',     'Multiple failed SSH login attempts',
    '{"type":"threshold","field":"message","pattern":"Failed password","threshold":5,"window_seconds":60}',
    'CRITICAL', true),
-  ('Auth Failure Spike',     'Unusual auth failure rate',
+  ('Auth Failure Spike',  'Unusual auth failure rate',
    '{"type":"threshold","field":"message","pattern":"authentication failure","threshold":10,"window_seconds":300}',
    'HIGH', true),
-  ('Prompt Injection',       'Possible LLM prompt injection in chat input',
+  ('Prompt Injection',    'Possible LLM prompt injection in chat input',
    '{"type":"pattern","field":"message","pattern":"(?i)(ignore previous|system prompt|jailbreak)"}',
    'HIGH', true),
-  ('Session Token Reuse',    'JWT or session token replayed',
+  ('Session Token Reuse', 'JWT or session token replayed',
    '{"type":"pattern","field":"message","pattern":"(?i)(token reuse|replay attack|session hijack)"}',
    'HIGH', true),
-  ('Rootcheck Anomaly',      'Host-based anomaly detected via rootcheck',
+  ('Rootcheck Anomaly',   'Host-based anomaly detected via rootcheck',
    '{"type":"pattern","field":"message","pattern":"(?i)(rootcheck|integrity check failed)"}',
    'WARN', true),
-  ('Forbidden Directory',    'Attempt to access forbidden path',
+  ('Forbidden Directory', 'Attempt to access forbidden path',
    '{"type":"pattern","field":"message","pattern":"(?i)(403|forbidden directory)"}',
    'WARN', true),
-  ('CVE Vulnerability',      'Known CVE detected on host packages',
+  ('CVE Vulnerability',   'Known CVE detected on host packages',
    '{"type":"pattern","field":"message","pattern":"CVE-[0-9]{4}-[0-9]+"}',
    'HIGH', true),
-  ('DB Query Anomaly',       'Unusual DB query volume — data exfiltration risk',
+  ('DB Query Anomaly',    'Unusual DB query volume',
    '{"type":"threshold","field":"message","pattern":"SELECT","threshold":1000,"window_seconds":60}',
    'HIGH', true),
-  ('GuardDuty Anomaly',      'AWS GuardDuty anomalous network finding',
+  ('GuardDuty Anomaly',   'AWS GuardDuty anomalous network finding',
    '{"type":"pattern","field":"message","pattern":"(?i)(guardduty|unusual outbound|suspicious)"}',
    'HIGH', true),
-  ('SSH Version Scan',       'Possible SSH version-gathering attack',
+  ('SSH Version Scan',    'Possible SSH version-gathering attack',
    '{"type":"pattern","field":"message","pattern":"(?i)(version gathering|ssh scan|sshd.*attack)"}',
    'HIGH', true)
 ON CONFLICT (name) DO NOTHING;
 
--- ---------------------------------------------------------------------------
--- Events (last 7 days, realistic distribution across sources and levels)
--- ---------------------------------------------------------------------------
 DO $$
 DECLARE
   src_ids  bigint[];
@@ -63,12 +54,12 @@ DECLARE
   ts       timestamptz;
   eid      bigint;
   rid      bigint;
-  agent_id text;
+  agent_id   text;
   agent_name text;
-  technique text;
-  tactic    text;
-  sev       text;
-  lvl_num   int;
+  technique  text;
+  tactic     text;
+  sev        text;
+  lvl_num    int;
 
   messages text[] := ARRAY[
     'Failed password for root from 192.168.1.45 port 22 ssh2',
@@ -96,26 +87,22 @@ DECLARE
   agent_ids   text[] := ARRAY['014','001','008','002','005'];
   agent_names text[] := ARRAY['chatbot-api','ncc-web-srv','db-postgres','redis-cache','nginx-proxy'];
   levels      text[] := ARRAY['INFO','INFO','WARN','WARN','ERROR','CRITICAL'];
-  
+
 BEGIN
   SELECT ARRAY_AGG(id ORDER BY id) INTO src_ids  FROM log_sources LIMIT 5;
   SELECT ARRAY_AGG(id ORDER BY id) INTO rule_ids FROM rules LIMIT 10;
 
   FOR i IN 1..500 LOOP
-    src_idx   := (i % 5) + 1;
-    ts        := NOW() - (random() * INTERVAL '7 days');
-    msg       := messages[(i % array_length(messages,1)) + 1];
-    lvl       := levels[(floor(random()*6)+1)::int];
-    agent_id  := agent_ids[(src_idx - 1) % 5 + 1];
-    agent_name:= agent_names[(src_idx - 1) % 5 + 1];
+    src_idx    := (i % 5) + 1;
+    ts         := NOW() - (random() * INTERVAL '7 days');
+    msg        := messages[(i % array_length(messages,1)) + 1];
+    lvl        := levels[(floor(random()*6)+1)::int];
+    agent_id   := agent_ids[(src_idx - 1) % 5 + 1];
+    agent_name := agent_names[(src_idx - 1) % 5 + 1];
 
     INSERT INTO events (source_id, timestamp, level, source, message, metadata)
     VALUES (
-      src_ids[src_idx],
-      ts,
-      lvl,
-      agent_name,
-      msg,
+      src_ids[src_idx], ts, lvl, agent_name, msg,
       jsonb_build_object(
         'agent_id',   agent_id,
         'agent_name', agent_name,
@@ -125,7 +112,6 @@ BEGIN
     )
     RETURNING id INTO eid;
 
-    -- Create an alert for ~40% of events that look critical
     IF random() < 0.4 AND lvl IN ('ERROR','CRITICAL','WARN') THEN
       rid := rule_ids[(i % array_length(rule_ids,1)) + 1];
 
@@ -135,10 +121,9 @@ BEGIN
         ELSE                       sev := 'WARN';     lvl_num := 7;
       END CASE;
 
-      -- Pick technique/tactic based on message content
       IF msg ILIKE '%password%' OR msg ILIKE '%auth%' THEN
         technique := 'Brute Force'; tactic := 'Credential Access';
-      ELSIF msg ILIKE '%injection%' OR msg ILIKE '%xss%' THEN
+      ELSIF msg ILIKE '%injection%' THEN
         technique := 'T1190'; tactic := 'Initial Access';
       ELSIF msg ILIKE '%exfil%' OR msg ILIKE '%query volume%' THEN
         technique := 'T1114'; tactic := 'Collection';
@@ -151,7 +136,9 @@ BEGIN
       INSERT INTO alerts (rule_id, event_id, severity, status, message, metadata)
       VALUES (
         rid, eid, sev,
-        CASE WHEN random() < 0.7 THEN 'open' WHEN random() < 0.5 THEN 'acknowledged' ELSE 'resolved' END,
+        CASE WHEN random() < 0.7 THEN 'open'
+             WHEN random() < 0.5 THEN 'acknowledged'
+             ELSE 'resolved' END,
         msg,
         jsonb_build_object(
           'agent_id',   agent_id,

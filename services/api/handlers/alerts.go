@@ -29,8 +29,12 @@ func ListAlerts(db *sql.DB) http.HandlerFunc {
 			page = 1
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit < 1 {
+			// frontend sends page_size
+			limit, _ = strconv.Atoi(r.URL.Query().Get("page_size"))
+		}
 		if limit < 1 || limit > 200 {
-			limit = 50
+			limit = 10
 		}
 		offset := (page - 1) * limit
 
@@ -83,12 +87,82 @@ func ListAlerts(db *sql.DB) http.HandlerFunc {
 			alerts = append(alerts, a)
 		}
 
+		// Map DB alerts to the SecurityAlert shape expected by the frontend
+		type SecurityAlert struct {
+			ID          int64           `json:"id"`
+			Timestamp   string          `json:"timestamp"`
+			AgentID     string          `json:"agent_id"`
+			AgentName   string          `json:"agent_name"`
+			Technique   *string         `json:"technique"`
+			Tactic      *string         `json:"tactic"`
+			Description string          `json:"description"`
+			Level       int             `json:"level"`
+			RuleID      string          `json:"rule_id"`
+		}
+
+		items := make([]SecurityAlert, 0, len(alerts))
+		for _, a := range alerts {
+			var technique, tactic *string
+			if a.Metadata != nil {
+				var meta map[string]interface{}
+				if json.Unmarshal(a.Metadata, &meta) == nil {
+					if v, ok := meta["technique"].(string); ok && v != "" {
+						technique = &v
+					}
+					if v, ok := meta["tactic"].(string); ok && v != "" {
+						tactic = &v
+					}
+				}
+			}
+			agentID := ""
+			agentName := ""
+			levelNum := 0
+			if a.Metadata != nil {
+				var meta map[string]interface{}
+				if json.Unmarshal(a.Metadata, &meta) == nil {
+					if v, ok := meta["agent_id"].(string); ok {
+						agentID = v
+					}
+					if v, ok := meta["agent_name"].(string); ok {
+						agentName = v
+					}
+					if v, ok := meta["level"].(float64); ok {
+						levelNum = int(v)
+					}
+				}
+			}
+			// Map severity to numeric level if not in metadata
+			if levelNum == 0 {
+				switch a.Severity {
+				case "CRITICAL", "critical":
+					levelNum = 14
+				case "HIGH", "high":
+					levelNum = 10
+				case "WARN", "warn", "WARNING":
+					levelNum = 7
+				default:
+					levelNum = 3
+				}
+			}
+			items = append(items, SecurityAlert{
+				ID:          a.ID,
+				Timestamp:   a.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z"),
+				AgentID:     agentID,
+				AgentName:   agentName,
+				Technique:   technique,
+				Tactic:      tactic,
+				Description: a.Message,
+				Level:       levelNum,
+				RuleID:      strconv.FormatInt(a.RuleID, 10),
+			})
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"data":  alerts,
-			"total": total,
-			"page":  page,
-			"limit": limit,
+			"items":     items,
+			"total":     total,
+			"page":      page,
+			"page_size": limit,
 		})
 	}
 }
